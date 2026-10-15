@@ -112,8 +112,7 @@ PAGE_HTML = """<!doctype html>
 """
 
 CREATE_ROOM_HTML = """
-    <p>Create a room and share its invite link with your friends.
-       Everyone in a room plays on the same container.</p>
+    <p>Create a room and share its invite link with your friends.</p>
     <form method="post" action="new">
       <button type="submit">Create a room</button>
     </form>
