@@ -1,0 +1,350 @@
+From 96bd2177181ef84c132cf4848412eba4754f1a6f Mon Sep 17 00:00:00 2001
+From: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
+Date: Sun, 18 Oct 2026 17:14:39 +0000
+Subject: [PATCH 2/6] Improve mobile touch controls and show scoreboard between
+ rounds
+
+- Replace removed document.createTouch() with a string touch binding (touch controls threw on modern browsers)
+- Register non-passive touch listeners (incl. touchmove) so preventDefault() suppresses long-press selection, callouts and scrolling
+- Disable text selection, touch callouts, tap highlight and browser gestures in the game view
+- Use clientX/innerWidth for left/right halves
+- Show a live scoreboard in the round recap on small screens
+
+Co-Authored-By: Akshat Bubna <akshatb42@gmail.com>
+---
+ src/client/controller/game/RoundController.js | 16 ++++-
+ src/client/model/Player.js                    |  2 +-
+ src/client/model/PlayerInput.js               | 65 +++++++++++++++----
+ src/client/views/game/play.html               |  9 +++
+ src/sass/helpers/_responsive.scss             | 54 +++++++++++++++
+ src/sass/pages/_game.scss                     | 10 +++
+ src/vendor/key-mapper.js                      | 16 ++---
+ 7 files changed, 148 insertions(+), 24 deletions(-)
+
+diff --git a/src/client/controller/game/RoundController.js b/src/client/controller/game/RoundController.js
+index 4b10ae3..aad41d9 100644
+--- a/src/client/controller/game/RoundController.js
++++ b/src/client/controller/game/RoundController.js
+@@ -27,11 +27,13 @@ function RoundController($scope, repository, notifier)
+     this.updateBorders = this.updateBorders.bind(this);
+     this.onEnd         = this.onEnd.bind(this);
+     this.onWarmup      = this.onWarmup.bind(this);
++    this.updateStandings = this.updateStandings.bind(this);
+     this.endWarmup     = this.endWarmup.bind(this);
+     this.detachEvents  = this.detachEvents.bind(this);
+ 
+     this.$scope.roundWinner = null;
+     this.$scope.gameWinner  = null;
++    this.$scope.standings   = [];
+ 
+     this.$scope.$on('$destroy', this.detachEvents);
+ 
+@@ -91,9 +93,21 @@ RoundController.prototype.onRoundEnd = function(e)
+     this.notifier.notifyInactive(this.game.roundWinner ? this.game.roundWinner.name + ' won round!' : 'Round end!');
+ 
+     this.$scope.winner = this.game.roundWinner ? this.game.roundWinner : false;
+-    this.digestScope();
++    this.updateStandings();
+ 
+     this.endElement.style.display = 'block';
++
++    // Round scores may arrive in the same network batch, right after the round end event.
++    setTimeout(this.updateStandings, 100);
++};
++
++/**
++ * Update the between-round scoreboard
++ */
++RoundController.prototype.updateStandings = function()
++{
++    this.$scope.standings = this.game.sortAvatars(this.game.avatars.filter(function () { return true; })).items;
++    this.digestScope();
+ };
+ 
+ /**
+diff --git a/src/client/model/Player.js b/src/client/model/Player.js
+index 7224c94..6fa50fa 100644
+--- a/src/client/model/Player.js
++++ b/src/client/model/Player.js
+@@ -76,7 +76,7 @@ Player.prototype.getMapping = function()
+  */
+ Player.prototype.setTouch = function()
+ {
+-    var touch = document.createTouch(window, window, new Date().getTime(), 0, 0, 0, 0);
++    var touch = PlayerInput.TOUCH;
+ 
+     for (var i = this.controls.length - 1; i >= 0; i--) {
+         this.controls[i].mappers.getById('touch').setValue(touch);
+diff --git a/src/client/model/PlayerInput.js b/src/client/model/PlayerInput.js
+index eb25121..9edc3de 100644
+--- a/src/client/model/PlayerInput.js
++++ b/src/client/model/PlayerInput.js
+@@ -31,6 +31,14 @@ PlayerInput.prototype.constructor = PlayerInput;
+  */
+ PlayerInput.prototype.defaultBinding = [37, 39];
+ 
++/**
++ * Touch events tracked by touch bindings.
++ * Listeners must be non-passive so preventDefault() suppresses long-press selection, callouts and scrolling.
++ *
++ * @type {Array}
++ */
++PlayerInput.prototype.touchEvents = ['touchstart', 'touchmove', 'touchend', 'touchcancel'];
++
+ /**
+  * Attach events
+  */
+@@ -50,10 +58,10 @@ PlayerInput.prototype.attachEvents = function()
+                 window.addEventListener('keydown', this.onKeyDown);
+                 window.addEventListener('keyup', this.onKeyUp);
+             } else if (type === 'touch') {
+-                window.addEventListener('touchstart', this.onTouch);
+-                window.addEventListener('touchend', this.onTouch);
+-                window.addEventListener('touchleave', this.onTouch);
+-                window.addEventListener('touchcancel', this.onTouch);
++                for (var e = this.touchEvents.length - 1; e >= 0; e--) {
++                    window.addEventListener(this.touchEvents[e], this.onTouch, {passive: false});
++                }
++                window.addEventListener('contextmenu', this.preventDefault);
+             } else if (new RegExp('^gamepad:\\d+:button').test(type)) {
+                 gamepadListener.on(type, this.onButton);
+             } else {
+@@ -82,10 +90,10 @@ PlayerInput.prototype.detachEvents = function()
+                 window.removeEventListener('keydown', this.onKeyDown);
+                 window.removeEventListener('keyup', this.onKeyUp);
+             } else if (type === 'touch') {
+-                window.removeEventListener('touchstart', this.onTouch);
+-                window.removeEventListener('touchend', this.onTouch);
+-                window.removeEventListener('touchleave', this.onTouch);
+-                window.removeEventListener('touchcancel', this.onTouch);
++                for (var e = this.touchEvents.length - 1; e >= 0; e--) {
++                    window.removeEventListener(this.touchEvents[e], this.onTouch, {passive: false});
++                }
++                window.removeEventListener('contextmenu', this.preventDefault);
+             } else if (new RegExp('^gamepad:\\d+:button').test(type)) {
+                 gamepadListener.off(type, this.onButton);
+             } else {
+@@ -95,6 +103,35 @@ PlayerInput.prototype.detachEvents = function()
+     }
+ };
+ 
++/**
++ * Prevent default browser behaviour (long-press context menu)
++ *
++ * @param {Event} e
++ */
++PlayerInput.prototype.preventDefault = function(e)
++{
++    e.preventDefault();
++};
++
++/**
++ * Is the given binding a touch binding?
++ *
++ * @param {*} binding
++ *
++ * @return {Boolean}
++ */
++PlayerInput.isTouchBinding = function(binding)
++{
++    return binding === PlayerInput.TOUCH || (typeof(Touch) !== 'undefined' && binding instanceof Touch);
++};
++
++/**
++ * Touch binding value
++ *
++ * @type {String}
++ */
++PlayerInput.TOUCH = 'touch';
++
+ /**
+  * Get binding type
+  *
+@@ -104,7 +141,7 @@ PlayerInput.prototype.detachEvents = function()
+  */
+ PlayerInput.prototype.getBindingType = function(binding)
+ {
+-    if (typeof(Touch) !== 'undefined' && binding instanceof Touch) {
++    if (PlayerInput.isTouchBinding(binding)) {
+         return 'touch';
+     }
+ 
+@@ -182,21 +219,23 @@ PlayerInput.prototype.onButton = function(e)
+  */
+ PlayerInput.prototype.onTouch = function(e)
+ {
+-    e.preventDefault();
++    if (e.cancelable) {
++        e.preventDefault();
++    }
+ 
+-    var center = this.width/2,
++    var center = (this.width || window.innerWidth)/2,
+         tests = [],
+         t, i, x;
+ 
+     for (i = this.binding.length - 1; i >= 0; i--) {
+-        if (this.binding[i] instanceof Touch) {
++        if (PlayerInput.isTouchBinding(this.binding[i])) {
+             tests.push({index: i, result: false});
+         }
+     }
+ 
+     for (i = e.touches.length - 1; i >= 0; i--) {
+         for (t = tests.length - 1; t >= 0; t--) {
+-            x = e.touches[i].screenX;
++            x = e.touches[i].clientX;
+             if (tests[t].index === 0 ? x < center : x >= center) {
+                 tests[t].result = true;
+             }
+diff --git a/src/client/views/game/play.html b/src/client/views/game/play.html
+index 67f533f..755f47c 100644
+--- a/src/client/views/game/play.html
++++ b/src/client/views/game/play.html
+@@ -79,6 +79,15 @@
+                             <i class="icon-dead"></i>
+                             Oops, everybody died...
+                         </p>
++                        <table class="table recap round-scores" ng-if="game.started">
++                            <tbody>
++                                <tr ng-repeat="avatar in standings track by avatar.id">
++                                    <td class="rank">{{ $index+1 }}</td>
++                                    <td class="name"><span style="color: {{ ::avatar.player.color }}">{{ ::avatar.name }}</span></td>
++                                    <td class="points"><strong>{{ avatar.score }}</strong><span class="round-points" ng-if="avatar.roundScore"> +{{ avatar.roundScore }}</span></td>
++                                </tr>
++                            </tbody>
++                        </table>
+                         <div ng-if="!game.started">
+                             <button ng-click="backToRoom()" type="button" class="btn btn-hero btn-back-to-room">
+                                 Back to the room
+diff --git a/src/sass/helpers/_responsive.scss b/src/sass/helpers/_responsive.scss
+index 5c9adc1..9110b63 100644
+--- a/src/sass/helpers/_responsive.scss
++++ b/src/sass/helpers/_responsive.scss
+@@ -236,6 +236,60 @@
+ 
+         #col-right {
+             left: 0;
++
++            #end {
++                .victory {
++                    font-size: 24px;
++                    line-height: 50px;
++                    padding: 0 10px;
++
++                    .icon-trophy {
++                        font-size: 50px;
++                    }
++                }
++
++                .recap-view table.round-scores {
++                    display: table;
++                    width: auto;
++                    min-width: 60%;
++                    max-width: 90%;
++                    margin: 20px auto 0;
++                    text-align: left;
++
++                    td {
++                        border-top: 1px solid transparentize(#FFF, 0.9);
++                        background: transparentize(#FFF, 0.95);
++                        padding: 8px 12px;
++                        font-size: 18px;
++                        font-weight: 300;
++
++                        &.rank, &.name {
++                            font-weight: bold;
++                        }
++
++                        &.points {
++                            text-align: right;
++
++                            .round-points {
++                                opacity: 0.6;
++                            }
++                        }
++                    }
++                }
++
++                .recap-view.game table.recap td {
++                    padding: 10px;
++                    font-size: 18px;
++
++                    &.rank {
++                        width: 40px;
++                    }
++
++                    &.points {
++                        width: auto;
++                    }
++                }
++            }
+         }
+     }
+ 
+diff --git a/src/sass/pages/_game.scss b/src/sass/pages/_game.scss
+index fa5f2e0..5111b4b 100644
+--- a/src/sass/pages/_game.scss
++++ b/src/sass/pages/_game.scss
+@@ -1,4 +1,10 @@
+ #game-wrapper {
++    -webkit-user-select: none;
++    user-select: none;
++    -webkit-touch-callout: none;
++    -webkit-tap-highlight-color: transparent;
++    touch-action: none;
++    overscroll-behavior: none;
+     position: fixed;
+     top: 0;
+     right: 0;
+@@ -501,6 +507,10 @@
+                 position: relative;
+                 color: #FFF;
+ 
++                table.round-scores {
++                    display: none;
++                }
++
+                 &.round {
+                     top: 50%;
+                     -webkit-transform: translateY(-50%);
+diff --git a/src/vendor/key-mapper.js b/src/vendor/key-mapper.js
+index 8583456..9fd6e03 100644
+--- a/src/vendor/key-mapper.js
++++ b/src/vendor/key-mapper.js
+@@ -218,20 +218,18 @@ TouchMapper.prototype.constructor = TouchMapper;
+ TouchMapper.prototype.start = function()
+ {
+     if (Mapper.prototype.start.call(this)) {
+-        window.addEventListener('touchstart', this.onTouch);
+-        window.addEventListener('touchend', this.kill);
+-        window.addEventListener('touchcancel', this.kill);
+-        window.addEventListener('touchleave', this.kill);
++        window.addEventListener('touchstart', this.onTouch, {passive: false});
++        window.addEventListener('touchend', this.kill, {passive: false});
++        window.addEventListener('touchcancel', this.kill, {passive: false});
+     }
+ };
+ 
+ TouchMapper.prototype.stop = function()
+ {
+     if (Mapper.prototype.stop.call(this)) {
+-        window.removeEventListener('touchstart', this.onTouch);
+-        window.removeEventListener('touchend', this.kill);
+-        window.removeEventListener('touchcancel', this.kill);
+-        window.removeEventListener('touchleave', this.kill);
++        window.removeEventListener('touchstart', this.onTouch, {passive: false});
++        window.removeEventListener('touchend', this.kill, {passive: false});
++        window.removeEventListener('touchcancel', this.kill, {passive: false});
+     }
+ };
+ 
+@@ -239,7 +237,7 @@ TouchMapper.prototype.onTouch = function(e)
+ {
+     e.preventDefault();
+     this.stop();
+-    this.setValue(e.changedTouches[0]);
++    this.setValue('touch');
+     return false;
+ };
+ 
