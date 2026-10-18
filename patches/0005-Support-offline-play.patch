@@ -1,0 +1,478 @@
+From 2bcb2af2e542633d795434d8b6a93d1a7ea3a7b8 Mon Sep 17 00:00:00 2001
+From: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
+Date: Sun, 18 Oct 2026 17:25:05 +0000
+Subject: [PATCH 5/5] Support offline play
+
+Run the game server in a Web Worker when the browser is offline (or with ?offline),
+connected through a WebSocket-like WorkerSocket. A generated service worker precaches
+the app shell (network first, cache fallback) so the game loads without a network.
+The disconnected screen offers a 'Play offline' button.
+
+Co-Authored-By: Akshat Bubna <akshatb42@gmail.com>
+---
+ .gitignore                      |  1 +
+ package.json                    |  3 +-
+ scripts/build-offline.js        | 40 +++++++++++++++
+ src/client/app.js               |  8 +++
+ src/client/core/SocketClient.js | 19 +++++++-
+ src/client/core/WorkerSocket.js | 63 ++++++++++++++++++++++++
+ src/client/views/index.html     |  3 ++
+ src/offline/main.js             | 77 +++++++++++++++++++++++++++++
+ src/offline/shim.js             | 86 +++++++++++++++++++++++++++++++++
+ src/offline/sw.js               | 46 ++++++++++++++++++
+ 10 files changed, 343 insertions(+), 3 deletions(-)
+ create mode 100644 scripts/build-offline.js
+ create mode 100644 src/client/core/WorkerSocket.js
+ create mode 100644 src/offline/main.js
+ create mode 100644 src/offline/shim.js
+ create mode 100644 src/offline/sw.js
+
+diff --git a/.gitignore b/.gitignore
+index 6318955..122f5dd 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -3,6 +3,7 @@ node_modules/*
+ web/css/*
+ web/js/*
+ web/index.html
++web/sw.js
+ bin/*
+ stats/*
+ config.json
+diff --git a/package.json b/package.json
+index ba100d4..5ff494b 100644
+--- a/package.json
++++ b/package.json
+@@ -65,7 +65,8 @@
+     "build:css": "sass src/sass/style.scss web/css/style.css --style=compressed --no-source-map --silence-deprecation=import,color-functions,global-builtin,slash-div",
+     "build:views": "node scripts/copy-views.js",
+     "build:html": "node scripts/build-html.js",
+-    "build": "npm run build:server && npm run build:vendor && npm run build:client -- --minify && npm run build:css && npm run build:views && npm run build:html",
++    "build:offline": "node scripts/build-offline.js",
++    "build": "npm run build:server && npm run build:vendor && npm run build:client -- --minify && npm run build:css && npm run build:views && npm run build:html && npm run build:offline",
+     "watch:client": "node --watch-path=./src/client --watch-path=./src/shared scripts/build-client.js",
+     "watch:server": "node --watch-path=./src/server --watch-path=./src/shared scripts/build-server.js",
+     "watch:css": "sass --watch src/sass/style.scss:web/css/style.css --silence-deprecation=import,color-functions,global-builtin,slash-div",
+diff --git a/scripts/build-offline.js b/scripts/build-offline.js
+new file mode 100644
+index 0000000..eea75a3
+--- /dev/null
++++ b/scripts/build-offline.js
+@@ -0,0 +1,40 @@
++import { readFileSync, writeFileSync, globSync } from 'node:fs';
++import { createHash } from 'node:crypto';
++import { dirname, join, resolve } from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const __dirname = dirname(fileURLToPath(import.meta.url));
++const root = resolve(__dirname, '..');
++const web = join(root, 'web');
++
++// The game server, run in a Web Worker for offline play.
++const excluded = new Set(['src/server/core/Server.js', 'src/server/core/Inspector.js']);
++const patterns = ['src/offline/shim.js', 'src/shared/**/*.js', 'src/server/*/**/*.js', 'src/offline/main.js'];
++const files = [];
++
++for (const pattern of patterns) {
++    for (const f of globSync(pattern, { cwd: root }).sort()) {
++        if (!excluded.has(f) && !files.includes(f)) { files.push(f); }
++    }
++}
++
++const worker = join(web, 'js', 'offline-server.js');
++writeFileSync(worker, files.map(f => readFileSync(join(root, f), 'utf8')).join('\n'));
++console.log(`Offline server built → ${worker} (${files.length} files)`);
++
++// Service worker precaching the app shell so the game loads without a network.
++const assets = globSync('**/*', { cwd: web, withFileTypes: true })
++    .filter(entry => entry.isFile())
++    .map(entry => join(entry.parentPath, entry.name).slice(web.length + 1))
++    .filter(f => f !== 'sw.js' && f !== 'js/stressTest.js' && f !== 'robots.txt')
++    .sort();
++
++const hash = createHash('sha256');
++for (const f of assets) { hash.update(f).update(readFileSync(join(web, f))); }
++
++const sw = readFileSync(join(root, 'src/offline/sw.js'), 'utf8')
++    .replace('__CACHE__', JSON.stringify('curvytron-' + hash.digest('hex').slice(0, 12)))
++    .replace('__ASSETS__', JSON.stringify(['./', ...assets]));
++
++writeFileSync(join(web, 'sw.js'), sw);
++console.log(`Service worker built → web/sw.js (${assets.length + 1} assets)`);
+diff --git a/src/client/app.js b/src/client/app.js
+index ee5b252..f05c32b 100644
+--- a/src/client/app.js
++++ b/src/client/app.js
+@@ -86,3 +86,11 @@ curvytronApp.config(['$routeProvider', '$locationProvider', function($routeProvi
+             redirectTo: '/'
+         });
+ }]);
++
++if ('serviceWorker' in navigator && window.isSecureContext) {
++    window.addEventListener('load', function () {
++        navigator.serviceWorker.register('sw.js').catch(function (error) {
++            console.warn('Service worker registration failed: %s', error);
++        });
++    });
++}
+diff --git a/src/client/core/SocketClient.js b/src/client/core/SocketClient.js
+index 441e310..c3265ca 100644
+--- a/src/client/core/SocketClient.js
++++ b/src/client/core/SocketClient.js
+@@ -11,6 +11,8 @@ function SocketClient()
+     this.onOpen       = this.onOpen.bind(this);
+     this.onConnection = this.onConnection.bind(this);
+ 
++    this.offline = SocketClient.isOffline();
++
+     var Socket = window.MozWebSocket || window.WebSocket;
+ 
+     var protocol = 'ws://';
+@@ -18,7 +20,10 @@ function SocketClient()
+         protocol = 'wss://';
+     }
+ 
+-    BaseSocketClient.call(this, new Socket(protocol + document.location.host + document.location.pathname, ['websocket']));
++    BaseSocketClient.call(this, this.offline ?
++        new WorkerSocket('js/offline-server.js') :
++        new Socket(protocol + document.location.host + document.location.pathname, ['websocket'])
++    );
+ 
+     this.socket.addEventListener('open', this.onOpen);
+     this.socket.addEventListener('error', this.onError);
+@@ -33,6 +38,16 @@ SocketClient.prototype.constructor = SocketClient;
+  *
+  * @param {Socket} socket
+  */
++SocketClient.isOffline = function()
++{
++    return navigator.onLine === false || /(^|[?&])offline([=&]|$)/.test(location.search.slice(1));
++};
++
++/**
++ * On open
++ *
++ * @param {Event} e
++ */
+ SocketClient.prototype.onOpen = function(e)
+ {
+     console.info('Socket open.');
+@@ -53,7 +68,7 @@ SocketClient.prototype.onConnection = function(id)
+ 
+     this.start();
+ 
+-    if (RtcClient.isSupported()) {
++    if (!this.offline && RtcClient.isSupported()) {
+         this.rtc = new RtcClient(this);
+         this.rtc.start();
+     }
+diff --git a/src/client/core/WorkerSocket.js b/src/client/core/WorkerSocket.js
+new file mode 100644
+index 0000000..3069941
+--- /dev/null
++++ b/src/client/core/WorkerSocket.js
+@@ -0,0 +1,63 @@
++/**
++ * WebSocket-like connection to a game server running in a Web Worker (offline play)
++ *
++ * @param {String} url Worker script
++ */
++function WorkerSocket(url)
++{
++    this.id         = 1;
++    this.readyState = 0;
++    this.listeners  = {};
++    this.worker     = new Worker(url);
++
++    this.onWorkerMessage = this.onWorkerMessage.bind(this);
++
++    this.worker.addEventListener('message', this.onWorkerMessage);
++    this.worker.addEventListener('error', this.dispatch.bind(this, 'error'));
++    this.worker.postMessage({type: 'open', id: this.id});
++}
++
++WorkerSocket.prototype.addEventListener = function(name, callback)
++{
++    (this.listeners[name] = this.listeners[name] || []).push(callback);
++};
++
++WorkerSocket.prototype.removeEventListener = function(name, callback)
++{
++    var listeners = this.listeners[name] || [],
++        index     = listeners.indexOf(callback);
++
++    if (index >= 0) { listeners.splice(index, 1); }
++};
++
++WorkerSocket.prototype.dispatch = function(name, event)
++{
++    var listeners = (this.listeners[name] || []).slice();
++
++    for (var i = 0; i < listeners.length; i++) {
++        listeners[i](event);
++    }
++};
++
++WorkerSocket.prototype.onWorkerMessage = function(e)
++{
++    if (e.data.type === 'open') {
++        this.readyState = 1;
++        this.dispatch('open', {});
++    } else if (e.data.type === 'message') {
++        this.dispatch('message', {data: e.data.data});
++    }
++};
++
++WorkerSocket.prototype.send = function(data)
++{
++    this.worker.postMessage({type: 'message', id: this.id, data: data});
++};
++
++WorkerSocket.prototype.close = function()
++{
++    this.worker.postMessage({type: 'close', id: this.id});
++    this.worker.terminate();
++    this.readyState = 3;
++    this.dispatch('close', {});
++};
+diff --git a/src/client/views/index.html b/src/client/views/index.html
+index d4c645b..4b3bc9c 100644
+--- a/src/client/views/index.html
++++ b/src/client/views/index.html
+@@ -55,6 +55,9 @@
+                 <button ng-click="reload()" class="btn btn-default">
+                     Try again now!
+                 </button>
++                <a href="?offline#/" class="btn btn-default">
++                    Play offline
++                </a>
+             </section>
+         </div>
+ 
+diff --git a/src/offline/main.js b/src/offline/main.js
+new file mode 100644
+index 0000000..da8ca7d
+--- /dev/null
++++ b/src/offline/main.js
+@@ -0,0 +1,77 @@
++/**
++ * Socket connected to a page through worker messages
++ *
++ * @param {Number} id
++ */
++function WorkerServerSocket(id)
++{
++    this.id        = id;
++    this.listeners = {};
++}
++
++WorkerServerSocket.prototype.addEventListener = function(name, callback)
++{
++    (this.listeners[name] = this.listeners[name] || []).push(callback);
++};
++
++WorkerServerSocket.prototype.removeEventListener = function(name, callback)
++{
++    var listeners = this.listeners[name] || [],
++        index     = listeners.indexOf(callback);
++
++    if (index >= 0) { listeners.splice(index, 1); }
++};
++
++WorkerServerSocket.prototype.dispatch = function(name, event)
++{
++    var listeners = (this.listeners[name] || []).slice();
++
++    for (var i = 0; i < listeners.length; i++) {
++        listeners[i](event);
++    }
++};
++
++WorkerServerSocket.prototype.send = function(data)
++{
++    self.postMessage({type: 'message', id: this.id, data: data});
++};
++
++WorkerServerSocket.prototype.ping = function(message, callback)
++{
++    setTimeout(callback, 0);
++};
++
++var offlineClients         = new Collection([], 'id', true),
++    offlineRoomsController = new RoomsController(new RoomRepository()),
++    offlineSockets         = {};
++
++self.onmessage = function(e)
++{
++    var message = e.data,
++        socket  = offlineSockets[message.id],
++        client;
++
++    switch (message.type) {
++        case 'open':
++            socket = offlineSockets[message.id] = new WorkerServerSocket(message.id);
++            client = new SocketClient(socket, 1, 'offline');
++
++            offlineClients.add(client);
++            client.on('close', function () { offlineClients.remove(client); });
++            offlineRoomsController.attach(client);
++
++            self.postMessage({type: 'open', id: message.id});
++            break;
++
++        case 'message':
++            if (socket) { socket.dispatch('message', {data: message.data}); }
++            break;
++
++        case 'close':
++            if (socket) {
++                socket.dispatch('close', {});
++                delete offlineSockets[message.id];
++            }
++            break;
++    }
++};
+diff --git a/src/offline/shim.js b/src/offline/shim.js
+new file mode 100644
+index 0000000..1ddffdc
+--- /dev/null
++++ b/src/offline/shim.js
+@@ -0,0 +1,86 @@
++/**
++ * Browser stand-ins for the Node.js modules used by the server code, so the game server
++ * can run inside a Web Worker for offline play.
++ */
++function EventEmitter()
++{
++    this._events = {};
++}
++
++EventEmitter.prototype.on = function(name, listener)
++{
++    if (!this._events) { this._events = {}; }
++    (this._events[name] = this._events[name] || []).push(listener);
++
++    return this;
++};
++
++EventEmitter.prototype.addListener = EventEmitter.prototype.on;
++
++EventEmitter.prototype.once = function(name, listener)
++{
++    var emitter = this;
++
++    function wrapper() {
++        emitter.removeListener(name, wrapper);
++        listener.apply(this, arguments);
++    }
++
++    wrapper.listener = listener;
++
++    return this.on(name, wrapper);
++};
++
++EventEmitter.prototype.removeListener = function(name, listener)
++{
++    var listeners = this._events && this._events[name];
++
++    if (listeners) {
++        for (var i = listeners.length - 1; i >= 0; i--) {
++            if (listeners[i] === listener || listeners[i].listener === listener) {
++                listeners.splice(i, 1);
++                break;
++            }
++        }
++    }
++
++    return this;
++};
++
++EventEmitter.prototype.off = EventEmitter.prototype.removeListener;
++
++EventEmitter.prototype.removeAllListeners = function(name)
++{
++    if (typeof(name) === 'undefined') {
++        this._events = {};
++    } else if (this._events) {
++        delete this._events[name];
++    }
++
++    return this;
++};
++
++EventEmitter.prototype.setMaxListeners = function() { return this; };
++
++EventEmitter.prototype.listeners = function(name)
++{
++    return (this._events && this._events[name] || []).slice();
++};
++
++EventEmitter.prototype.emit = function(name)
++{
++    var listeners = this.listeners(name),
++        args      = Array.prototype.slice.call(arguments, 1);
++
++    for (var i = 0; i < listeners.length; i++) {
++        listeners[i].apply(this, args);
++    }
++
++    return listeners.length > 0;
++};
++
++var md5 = false,
++    usage = false,
++    influx = false,
++    nodeDataChannel = false,
++    process = {pid: 0, env: {CURVYTRON_WEBRTC: '0'}};
+diff --git a/src/offline/sw.js b/src/offline/sw.js
+new file mode 100644
+index 0000000..d706868
+--- /dev/null
++++ b/src/offline/sw.js
+@@ -0,0 +1,46 @@
++/* Service worker: network first, cached app shell when offline. */
++var CACHE  = __CACHE__,
++    ASSETS = __ASSETS__;
++
++self.addEventListener('install', function (e) {
++    self.skipWaiting();
++    e.waitUntil(caches.open(CACHE).then(function (cache) {
++        return Promise.all(ASSETS.map(function (asset) {
++            return cache.add(asset).catch(function () {});
++        }));
++    }));
++});
++
++self.addEventListener('activate', function (e) {
++    e.waitUntil(caches.keys().then(function (keys) {
++        return Promise.all(keys.filter(function (key) { return key !== CACHE; }).map(function (key) {
++            return caches.delete(key);
++        }));
++    }).then(function () {
++        return self.clients.claim();
++    }));
++});
++
++self.addEventListener('fetch', function (e) {
++    var request = e.request;
++
++    if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) {
++        return;
++    }
++
++    e.respondWith(fetch(request).then(function (response) {
++        if (response.ok) {
++            var copy = response.clone();
++            caches.open(CACHE).then(function (cache) { cache.put(request, copy); });
++        }
++
++        return response;
++    }).catch(function () {
++        return caches.match(request, {ignoreSearch: true}).then(function (response) {
++            if (response) { return response; }
++            if (request.mode === 'navigate') { return caches.match('./', {ignoreSearch: true}); }
++
++            return Response.error();
++        });
++    }));
++});

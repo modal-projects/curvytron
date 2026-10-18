@@ -4,7 +4,7 @@ A public multiplayer demo of [Modal Sticky Sessions](https://modal.com/docs/guid
 
 Curvytron's Node.js server keeps each room's game state in process memory, so every player in a room must reach the same container. The `ui` launcher starts one session per room and hands out an invite link of the form `<server>/?modal_session_token=<token>#/room/<name>`. Modal exchanges the query parameter for a session cookie, and the page and its WebSocket are then routed to the room's container.
 
-- The `Curvytron` Server is built from a pinned upstream commit, with a one-line patch so that joining an unknown room creates it.
+- The `Curvytron` Server is built from a pinned upstream commit plus the patches in [`patches/`](patches/README.md): invite links create rooms on join, better mobile controls, client-side prediction, WebRTC game state, and offline play.
 - Each container hosts up to 8 rooms (sessions), with at most 10 containers. Routing and compute are pinned to `us-east`.
 - A room's session ends after it has been empty for 5 minutes.
 

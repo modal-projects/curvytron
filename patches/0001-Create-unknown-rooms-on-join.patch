@@ -1,0 +1,23 @@
+From 1d1bfb10d6c202ef984d39c85ce5b4ee13c0a1c3 Mon Sep 17 00:00:00 2001
+From: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
+Date: Sun, 18 Oct 2026 17:11:09 +0000
+Subject: [PATCH 1/5] Create unknown rooms on join
+
+Co-Authored-By: Akshat Bubna <akshatb42@gmail.com>
+---
+ src/server/controller/RoomsController.js | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/server/controller/RoomsController.js b/src/server/controller/RoomsController.js
+index a2f9417..3eab49c 100644
+--- a/src/server/controller/RoomsController.js
++++ b/src/server/controller/RoomsController.js
+@@ -128,7 +128,7 @@ RoomsController.prototype.onCreateRoom = function(client, data, callback)
+  */
+ RoomsController.prototype.onJoinRoom = function(client, data, callback)
+ {
+-    var room = this.repository.get(data.name);
++    var room = this.repository.get(data.name) || this.repository.create(data.name);
+ 
+     if (!room) {
+         return callback({success: false, error: 'Unknown room "' + data.name + '".'});

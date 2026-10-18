@@ -1,0 +1,720 @@
+From ab345c29172ac2dfa6bf53022acab3e0cf57d83d Mon Sep 17 00:00:00 2001
+From: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
+Date: Sun, 18 Oct 2026 17:18:29 +0000
+Subject: [PATCH 3/5] Add client-side prediction with rollback for local
+ avatars
+
+Local inputs are tagged with a sequence number; the server echoes the last applied
+sequence in position events. The client rewinds to the latest authoritative state and
+replays unacknowledged inputs over one measured round trip, smoothing corrections and
+drawing the predicted trail on a dedicated canvas.
+
+Also sends directionInLoop/angularVelocityBase bonus properties to clients so the
+prediction can mirror the straight-angle bonus.
+
+Co-Authored-By: Akshat Bubna <akshatb42@gmail.com>
+---
+ src/client/controller/GameController.js |  10 +-
+ src/client/model/Avatar.js              |  50 +++-
+ src/client/model/AvatarPredictor.js     | 289 ++++++++++++++++++++++++
+ src/client/model/Game.js                |  27 ++-
+ src/client/repository/GameRepository.js |  32 ++-
+ src/client/views/game/play.html         |   1 +
+ src/sass/pages/_game.scss               |   6 +
+ src/server/controller/GameController.js |  14 +-
+ src/server/model/Avatar.js              |  27 ++-
+ src/server/model/BonusStack.js          |   6 +
+ 10 files changed, 450 insertions(+), 12 deletions(-)
+ create mode 100644 src/client/model/AvatarPredictor.js
+
+diff --git a/src/client/controller/GameController.js b/src/client/controller/GameController.js
+index f4bdb1a..4a4a212 100644
+--- a/src/client/controller/GameController.js
++++ b/src/client/controller/GameController.js
+@@ -153,7 +153,15 @@ GameController.prototype.onFirstRound = function(e)
+  */
+ GameController.prototype.onMove = function(e)
+ {
+-    this.client.addEvent('player:move', {avatar: e.detail.avatar.id, move: e.detail.move ? e.detail.move : 0});
++    var avatar = e.detail.avatar,
++        move   = e.detail.move ? e.detail.move : 0,
++        data   = {avatar: avatar.id, move: move};
++
++    if (avatar.predictor) {
++        data.seq = avatar.predictor.addInput(move);
++    }
++
++    this.client.addEvent('player:move', data);
+ };
+ 
+ /**
+diff --git a/src/client/model/Avatar.js b/src/client/model/Avatar.js
+index d37f477..093c3bf 100644
+--- a/src/client/model/Avatar.js
++++ b/src/client/model/Avatar.js
+@@ -24,8 +24,13 @@ function Avatar(player)
+         score: null
+     };
+ 
++    this.serverX      = 0;
++    this.serverY      = 0;
++    this.predictor    = null;
++
+     if (this.local) {
+-        this.input = new PlayerInput(this, player.getBinding());
++        this.input     = new PlayerInput(this, player.getBinding());
++        this.predictor = new AvatarPredictor(this);
+     }
+ 
+     this.drawArrow();
+@@ -55,7 +60,11 @@ Avatar.prototype.arrowSize = 200;
+  */
+ Avatar.prototype.update = function(step)
+ {
+-    if (!this.changed && this.alive) {
++    if (this.predictor && this.predictor.isActive() && step) {
++        var state = this.predictor.predict();
++        BaseAvatar.prototype.setPosition.call(this, state.x, state.y);
++        this.angle = state.angle;
++    } else if (!this.changed && this.alive) {
+         this.updateAngle(step);
+         this.updatePosition(step);
+     }
+@@ -71,9 +80,16 @@ Avatar.prototype.update = function(step)
+  * @param {Number} x
+  * @param {Number} y
+  */
+-Avatar.prototype.setPositionFromServer = function(x, y)
++Avatar.prototype.setPositionFromServer = function(x, y, sequence)
+ {
+     BaseAvatar.prototype.setPosition.call(this, x, y);
++    this.serverX = x;
++    this.serverY = y;
++
++    if (this.predictor) {
++        this.predictor.onServerPosition(x, y, sequence);
++    }
++
+ 
+     this.changed = true;
+ 
+@@ -109,6 +125,26 @@ Avatar.prototype.setRadius = function(radius)
+     this.drawHead();
+ };
+ 
++/**
++ * Set direction in loop
++ *
++ * @param {Boolean} directionInLoop
++ */
++Avatar.prototype.setDirectionInLoop = function(directionInLoop)
++{
++    this.directionInLoop = directionInLoop;
++};
++
++/**
++ * Set angular velocity base
++ *
++ * @param {Number} angularVelocityBase
++ */
++Avatar.prototype.setAngularVelocityBase = function(angularVelocityBase)
++{
++    this.angularVelocityBase = angularVelocityBase;
++};
++
+ /**
+  * Set color
+  *
+@@ -139,6 +175,7 @@ Avatar.prototype.setScore = function(score)
+  */
+ Avatar.prototype.die = function()
+ {
++    BaseAvatar.prototype.setPosition.call(this, this.serverX, this.serverY);
+     BaseAvatar.prototype.die.call(this);
+     this.emit('die', this);
+ };
+@@ -206,6 +243,13 @@ Avatar.prototype.destroy = function()
+ Avatar.prototype.clear = function()
+ {
+     BaseAvatar.prototype.clear.call(this);
++    this.serverX = this.x;
++    this.serverY = this.y;
++
++    if (this.predictor) {
++        this.predictor.reset();
++    }
++
+     this.updateWidth();
+     this.drawHead();
+ };
+diff --git a/src/client/model/AvatarPredictor.js b/src/client/model/AvatarPredictor.js
+new file mode 100644
+index 0000000..16544c9
+--- /dev/null
++++ b/src/client/model/AvatarPredictor.js
+@@ -0,0 +1,289 @@
++/**
++ * Avatar predictor
++ *
++ * Client-side prediction with rollback for a local avatar: the last authoritative
++ * server state is rewound to and re-simulated with the local inputs the server has
++ * not acknowledged yet, so the local avatar reacts to input immediately.
++ *
++ * @param {Avatar} avatar
++ */
++function AvatarPredictor(avatar)
++{
++    this.avatar   = avatar;
++    this.inputs   = [];
++    this.sequence = 0;
++    this.delay    = null;
++    this.path     = [];
++    this.errorX   = 0;
++    this.errorY   = 0;
++    this.lastTime = null;
++    this.game     = null;
++
++    this.reset();
++}
++
++/**
++ * Simulation step (ms), the server frame duration
++ *
++ * @type {Number}
++ */
++AvatarPredictor.prototype.step = 1000/60;
++
++/**
++ * Maximum prediction horizon (ms)
++ *
++ * @type {Number}
++ */
++AvatarPredictor.prototype.maxHorizon = 300;
++
++/**
++ * Correction smoothing time constant (ms)
++ *
++ * @type {Number}
++ */
++AvatarPredictor.prototype.smoothing = 80;
++
++/**
++ * Corrections larger than this distance are applied instantly
++ *
++ * @type {Number}
++ */
++AvatarPredictor.prototype.snapDistance = 4;
++
++/**
++ * Current time (ms)
++ *
++ * @return {Number}
++ */
++AvatarPredictor.prototype.now = function()
++{
++    return window.performance ? window.performance.now() : new Date().getTime();
++};
++
++/**
++ * Reset the authoritative state (new round)
++ */
++AvatarPredictor.prototype.reset = function()
++{
++    this.server = null;
++    this.angle  = null;
++    this.move   = 0;
++    this.errorX = 0;
++    this.errorY = 0;
++    this.path.length = 0;
++};
++
++/**
++ * Record a local input
++ *
++ * @param {Number} move
++ *
++ * @return {Number} Input sequence number
++ */
++AvatarPredictor.prototype.addInput = function(move)
++{
++    this.sequence++;
++    this.inputs.push({sequence: this.sequence, move: move, time: this.now()});
++
++    return this.sequence;
++};
++
++/**
++ * Set the measured round trip latency (ms)
++ *
++ * @param {Number} latency
++ */
++AvatarPredictor.prototype.setLatency = function(latency)
++{
++    if (this.delay === null && latency > 0) {
++        this.delay = latency;
++    }
++};
++
++/**
++ * On server angle
++ *
++ * @param {Number} angle
++ */
++AvatarPredictor.prototype.onServerAngle = function(angle)
++{
++    this.angle = angle;
++};
++
++/**
++ * On server position
++ *
++ * @param {Number} x
++ * @param {Number} y
++ * @param {Number} sequence Last input sequence applied by the server
++ */
++AvatarPredictor.prototype.onServerPosition = function(x, y, sequence)
++{
++    var now      = this.now(),
++        previous = this.server ? this.simulate(now, false) : null,
++        input;
++
++    while (this.inputs.length && typeof(sequence) === 'number' && this.inputs[0].sequence <= sequence) {
++        input = this.inputs.shift();
++        this.move = input.move;
++
++        if (input.sequence === sequence) {
++            this.addDelaySample(now - input.time);
++        }
++    }
++
++    this.server = {
++        x: x,
++        y: y,
++        angle: this.angle !== null ? this.angle : this.avatar.angle,
++        time: now
++    };
++
++    if (previous) {
++        var current = this.simulate(now, false),
++            errorX  = this.errorX + previous.x - current.x,
++            errorY  = this.errorY + previous.y - current.y;
++
++        if (Math.sqrt(errorX * errorX + errorY * errorY) > this.snapDistance) {
++            errorX = 0;
++            errorY = 0;
++        }
++
++        this.errorX = errorX;
++        this.errorY = errorY;
++    }
++};
++
++/**
++ * Add a latency sample (time between an input and its acknowledgement)
++ *
++ * @param {Number} sample
++ */
++AvatarPredictor.prototype.addDelaySample = function(sample)
++{
++    this.delay = this.delay === null ? sample : this.delay * 0.8 + sample * 0.2;
++};
++
++/**
++ * Can a prediction be made?
++ *
++ * @return {Boolean}
++ */
++AvatarPredictor.prototype.isActive = function()
++{
++    return this.server !== null && this.avatar.alive;
++};
++
++/**
++ * Predict the avatar state for the current frame
++ *
++ * @return {Object}
++ */
++AvatarPredictor.prototype.predict = function()
++{
++    var now   = this.now(),
++        state = this.simulate(now, this.avatar.printing),
++        decay = this.lastTime === null ? 1 : Math.exp(-(now - this.lastTime) / this.smoothing);
++
++    this.lastTime = now;
++    this.errorX  *= decay;
++    this.errorY  *= decay;
++
++    state.x += this.errorX;
++    state.y += this.errorY;
++
++    if (this.path.length) {
++        this.path[this.path.length - 1] = [state.x, state.y];
++    }
++
++    return state;
++};
++
++/**
++ * Re-simulate from the authoritative state to the given time
++ *
++ * The server sees an input about half a round trip after it was sent, and its state
++ * reaches us another half round trip later: the predicted state is the server state
++ * advanced by one round trip plus the time elapsed since it was received.
++ *
++ * @param {Number} now
++ * @param {Boolean} trace Record the simulated path
++ *
++ * @return {Object}
++ */
++AvatarPredictor.prototype.simulate = function(now, trace)
++{
++    var avatar   = this.avatar,
++        server   = this.server,
++        delay    = this.delay || 0,
++        horizon  = Math.min(now - server.time + delay, this.maxHorizon),
++        velocity = avatar.velocity / 1000,
++        x        = server.x,
++        y        = server.y,
++        angle    = server.angle,
++        angular  = this.getAngularVelocity(this.move),
++        size     = this.game ? this.game.size : null,
++        wrap     = this.game ? this.game.borderless : false,
++        next     = 0,
++        time     = 0,
++        input, dt, at;
++
++    if (trace) {
++        this.path.length = 0;
++        this.path.push([x, y]);
++    }
++
++    while (time < horizon) {
++        dt = Math.min(this.step, horizon - time);
++
++        while (next < this.inputs.length) {
++            input = this.inputs[next];
++            at    = Math.max(0, input.time + delay - server.time);
++
++            if (at > time) { break; }
++
++            angular = this.getAngularVelocity(input.move);
++            next++;
++        }
++
++        if (angular) {
++            if (avatar.directionInLoop) {
++                angle += angular * dt;
++            } else {
++                angle  += angular;
++                angular = 0;
++            }
++        }
++
++        x += Math.cos(angle) * velocity * dt;
++        y += Math.sin(angle) * velocity * dt;
++
++        if (wrap && size) {
++            if (x < 0 || x > size || y < 0 || y > size) {
++                x = (x + size) % size;
++                y = (y + size) % size;
++                if (trace) { this.path.length = 0; }
++            }
++        }
++
++        if (trace) {
++            this.path.push([x, y]);
++        }
++
++        time += dt;
++    }
++
++    return {x: x, y: y, angle: angle};
++};
++
++/**
++ * Angular velocity for the given move, mirroring BaseAvatar.updateAngularVelocity
++ *
++ * @param {Number} move
++ *
++ * @return {Number}
++ */
++AvatarPredictor.prototype.getAngularVelocity = function(move)
++{
++    return (move || 0) * this.avatar.angularVelocityBase * (this.avatar.inverse ? -1 : 1);
++};
+diff --git a/src/client/model/Game.js b/src/client/model/Game.js
+index 46a162b..3108a0c 100644
+--- a/src/client/model/Game.js
++++ b/src/client/model/Game.js
+@@ -16,7 +16,12 @@ function Game(room)
+     window.addEventListener('resize', this.onResize);
+ 
+     for (var avatar, i = this.avatars.items.length - 1; i >= 0; i--) {
+-        this.avatars.items[i].on('die', this.onDie);
++        avatar = this.avatars.items[i];
++        avatar.on('die', this.onDie);
++
++        if (avatar.predictor) {
++            avatar.predictor.game = this;
++        }
+     }
+ }
+ 
+@@ -46,6 +51,7 @@ Game.prototype.loadDOM = function()
+     this.gameInfos  = document.getElementById('game-infos');
+     this.canvas     = new Canvas(0, 0, document.getElementById('game'));
+     this.background = new Canvas(0, 0, document.getElementById('background'));
++    this.prediction = new Canvas(0, 0, document.getElementById('prediction'));
+     this.effect     = new Canvas(0, 0, document.getElementById('effect'));
+ 
+     this.bonusManager.loadDOM();
+@@ -156,6 +162,7 @@ Game.prototype.repaint = function()
+     this.clearBackground();
+     this.effect.clear();
+     this.canvas.clear();
++    this.prediction.clear();
+     this.draw();
+ };
+ 
+@@ -200,9 +207,26 @@ Game.prototype.draw = function(step)
+         }
+     }
+ 
++    this.drawPredictions();
+     this.bonusManager.draw();
+ };
+ 
++/**
++ * Draw the predicted trail of local avatars, between the last server point and the predicted head
++ */
++Game.prototype.drawPredictions = function()
++{
++    this.prediction.clear();
++
++    for (var avatar, i = this.avatars.items.length - 1; i >= 0; i--) {
++        avatar = this.avatars.items[i];
++
++        if (this.frame && avatar.predictor && avatar.alive && avatar.printing && avatar.predictor.isActive()) {
++            this.prediction.drawLineScaled(avatar.predictor.path, avatar.width, avatar.color, 'round');
++        }
++    }
++};
++
+ /**
+  * Draw tail
+  *
+@@ -320,6 +344,7 @@ Game.prototype.onResize = function()
+     this.render.style.height = (width + 8) + 'px';
+     this.canvas.setDimension(width, width, scale);
+     this.effect.setDimension(width, width, scale);
++    this.prediction.setDimension(width, width, scale);
+     this.background.setDimension(width, width, scale, true);
+     this.bonusManager.setDimension(width, scale);
+ 
+diff --git a/src/client/repository/GameRepository.js b/src/client/repository/GameRepository.js
+index b10341b..daebbc6 100644
+--- a/src/client/repository/GameRepository.js
++++ b/src/client/repository/GameRepository.js
+@@ -36,6 +36,7 @@ function GameRepository(client, parent, sound, notifier)
+     this.onEnd        = this.onEnd.bind(this);
+     this.onLeave      = this.onLeave.bind(this);
+     this.onSpectate   = this.onSpectate.bind(this);
++    this.onLatency    = this.onLatency.bind(this);
+ }
+ 
+ GameRepository.prototype = Object.create(EventEmitter.prototype);
+@@ -85,6 +86,7 @@ GameRepository.prototype.attachEvents = function()
+     this.client.on('end', this.onEnd);
+     this.client.on('game:leave', this.onLeave);
+     this.client.on('spectate', this.onSpectate);
++    this.client.on('latency', this.onLatency);
+ };
+ 
+ /**
+@@ -109,6 +111,7 @@ GameRepository.prototype.detachEvents = function()
+     this.client.off('end', this.onEnd);
+     this.client.off('game:leave', this.onLeave);
+     this.client.off('spectate', this.onSpectate);
++    this.client.off('latency', this.onLatency);
+ };
+ 
+ /**
+@@ -193,7 +196,8 @@ GameRepository.prototype.onPosition = function(e)
+     if (avatar) {
+         avatar.setPositionFromServer(
+             this.compressor.decompress(e.detail[1]),
+-            this.compressor.decompress(e.detail[2])
++            this.compressor.decompress(e.detail[2]),
++            e.detail[3]
+         );
+     }
+ };
+@@ -208,7 +212,7 @@ GameRepository.prototype.onPoint = function(e)
+     var avatar = this.game.avatars.getById(e.detail);
+ 
+     if (avatar) {
+-        avatar.addPoint(avatar.x, avatar.y);
++        avatar.addPoint(avatar.serverX, avatar.serverY);
+     }
+ };
+ 
+@@ -222,7 +226,29 @@ GameRepository.prototype.onAngle = function(e)
+     var avatar = this.game.avatars.getById(e.detail[0]);
+ 
+     if (avatar) {
+-        avatar.setAngle(this.compressor.decompress(e.detail[1]));
++        var angle = this.compressor.decompress(e.detail[1]);
++
++        if (avatar.predictor) {
++            avatar.predictor.onServerAngle(angle);
++        }
++
++        avatar.setAngle(angle);
++    }
++};
++
++/**
++ * On latency
++ *
++ * @param {Event} e
++ */
++GameRepository.prototype.onLatency = function(e)
++{
++    for (var avatar, i = this.game.avatars.items.length - 1; i >= 0; i--) {
++        avatar = this.game.avatars.items[i];
++
++        if (avatar.predictor) {
++            avatar.predictor.setLatency(e.detail);
++        }
+     }
+ };
+ 
+diff --git a/src/client/views/game/play.html b/src/client/views/game/play.html
+index 755f47c..b1ace14 100644
+--- a/src/client/views/game/play.html
++++ b/src/client/views/game/play.html
+@@ -111,6 +111,7 @@
+             <div id="render" class="game-render">
+                 <canvas id="background" class="game-background"></canvas>
+                 <canvas id="bonus" class="game-bonus"></canvas>
++                <canvas id="prediction" class="game-prediction"></canvas>
+                 <canvas id="game" class="game-front"></canvas>
+                 <canvas id="effect" class="game-effect"></canvas>
+             </div>
+diff --git a/src/sass/pages/_game.scss b/src/sass/pages/_game.scss
+index 5111b4b..c7e70a7 100644
+--- a/src/sass/pages/_game.scss
++++ b/src/sass/pages/_game.scss
+@@ -454,6 +454,12 @@
+                 display: block;
+             }
+ 
++            .game-prediction {
++                z-index: 45;
++                position: absolute;
++                display: block;
++            }
++
+             .game-front {
+                 z-index: 50;
+                 position: absolute;
+diff --git a/src/server/controller/GameController.js b/src/server/controller/GameController.js
+index 8bcf0ab..428d365 100644
+--- a/src/server/controller/GameController.js
++++ b/src/server/controller/GameController.js
+@@ -317,6 +317,10 @@ GameController.prototype.onMove = function(client, data)
+ 
+     if (player && player.avatar) {
+         player.avatar.updateAngularVelocity(data.move);
++
++        if (typeof(data.seq) === 'number') {
++            player.avatar.inputSequence = data.seq;
++        }
+     }
+ };
+ 
+@@ -339,11 +343,17 @@ GameController.prototype.onPoint = function(data)
+  */
+ GameController.prototype.onPosition = function(avatar)
+ {
+-    this.socketGroup.addEvent('position', [
++    var data = [
+         avatar.id,
+         this.compressor.compress(avatar.x),
+         this.compressor.compress(avatar.y)
+-    ]);
++    ];
++
++    if (avatar.inputSequence !== null) {
++        data.push(avatar.inputSequence);
++    }
++
++    this.socketGroup.addEvent('position', data);
+ };
+ 
+ /**
+diff --git a/src/server/model/Avatar.js b/src/server/model/Avatar.js
+index 93d6d29..bd936e8 100644
+--- a/src/server/model/Avatar.js
++++ b/src/server/model/Avatar.js
+@@ -9,7 +9,8 @@ function Avatar(player)
+ 
+     this.bodyCount    = 0;
+     this.body         = new AvatarBody(this.x, this.y, this);
+-    this.printManager = new PrintManager(this);
++    this.printManager  = new PrintManager(this);
++    this.inputSequence = null;
+ }
+ 
+ Avatar.prototype = Object.create(BaseAvatar.prototype);
+@@ -115,10 +116,32 @@ Avatar.prototype.setRadius = function(radius)
+     }
+ };
+ 
++/**
++ * Set direction in loop
++ *
++ * @param {Boolean} directionInLoop
++ */
++Avatar.prototype.setDirectionInLoop = function(directionInLoop)
++{
++    this.directionInLoop = directionInLoop;
++    this.emit('property', {avatar: this, property: 'directionInLoop', value: this.directionInLoop});
++};
++
++/**
++ * Set angular velocity base
++ *
++ * @param {Number} angularVelocityBase
++ */
++Avatar.prototype.setAngularVelocityBase = function(angularVelocityBase)
++{
++    this.angularVelocityBase = angularVelocityBase;
++    this.emit('property', {avatar: this, property: 'angularVelocityBase', value: this.angularVelocityBase});
++};
++
+ /**
+  * Set invincible
+  *
+- * @param {Number} invincible
++ * @param {Boolean} invincible
+  */
+ Avatar.prototype.setInvincible = function(invincible)
+ {
+diff --git a/src/server/model/BonusStack.js b/src/server/model/BonusStack.js
+index 92862c9..e7a5881 100644
+--- a/src/server/model/BonusStack.js
++++ b/src/server/model/BonusStack.js
+@@ -60,6 +60,12 @@ BonusStack.prototype.apply = function(property, value)
+         case 'color':
+             this.target.setColor(value);
+             break;
++        case 'directionInLoop':
++            this.target.setDirectionInLoop(value);
++            break;
++        case 'angularVelocityBase':
++            this.target.setAngularVelocityBase(value);
++            break;
+         default:
+             BaseBonusStack.prototype.apply.call(this, property, value);
+             break;

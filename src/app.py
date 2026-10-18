@@ -12,6 +12,8 @@ working.
 Check routing with `modal run -m src.app`.
 """
 
+from pathlib import Path
+
 import modal
 
 app = modal.App("curvytron")
@@ -20,20 +22,17 @@ CURVYTRON_REPO = "https://github.com/Curvytron/curvytron"
 CURVYTRON_COMMIT = "0051e59b173c244dfe30e539a227b01dc8216186"
 CURVYTRON_DIR = "/curvytron"
 
-# Stock Curvytron sends a player who joins an unknown room back to the lobby. Creating
-# the room on first join lets invite links go straight into a fresh room.
-JOIN_CREATES_ROOM_PATCH = (
-    "s/var room = this.repository.get(data.name);"
-    "/var room = this.repository.get(data.name) || this.repository.create(data.name);/"
-)
+# Patches on top of the pinned commit, applied in order (see `patches/README.md`).
+PATCHES_DIR = Path(__file__).parent.parent / "patches"
 
 image = (
     modal.Image.from_registry("node:22-bookworm-slim", add_python="3.12")
     .apt_install("git")
+    .add_local_dir(PATCHES_DIR, "/patches", copy=True)
     .run_commands(
         f"git clone {CURVYTRON_REPO} {CURVYTRON_DIR}",
         f"cd {CURVYTRON_DIR} && git checkout {CURVYTRON_COMMIT}",
-        f"cd {CURVYTRON_DIR} && sed -i '{JOIN_CREATES_ROOM_PATCH}' src/server/controller/RoomsController.js",
+        f"cd {CURVYTRON_DIR} && git apply /patches/*.patch",
         f"cd {CURVYTRON_DIR} && cp config.json.sample config.json",
         f"cd {CURVYTRON_DIR} && npm ci && npm run build",
     )

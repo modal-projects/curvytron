@@ -1,0 +1,1305 @@
+From 60a7aca4ee437fdcd959ba0a940b239b386087a8 Mon Sep 17 00:00:00 2001
+From: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
+Date: Sun, 18 Oct 2026 17:22:04 +0000
+Subject: [PATCH 4/5] Send game state over WebRTC data channels with WebSocket
+ fallback
+
+Clients negotiate a peer connection over the existing WebSocket. While a game is
+running, position/angle updates go over an unreliable, unordered 'state' channel
+(sequenced, stale packets dropped) and player inputs over a reliable ordered 'input'
+channel, avoiding TCP head-of-line blocking. Uses optional node-datachannel on the
+server; disable with CURVYTRON_WEBRTC=0, configure ICE with CURVYTRON_ICE_SERVERS.
+
+Co-Authored-By: Akshat Bubna <akshatb42@gmail.com>
+---
+ package-lock.json                       | 435 +++++++++++++++++++++++-
+ package.json                            |   1 +
+ src/client/controller/GameController.js |   4 +-
+ src/client/core/RtcClient.js            | 186 ++++++++++
+ src/client/core/SocketClient.js         |  12 +
+ src/client/repository/GameRepository.js |   3 +-
+ src/server/controller/GameController.js |  19 +-
+ src/server/core/RtcPeer.js              | 201 +++++++++++
+ src/server/core/SocketClient.js         |  29 ++
+ src/server/core/SocketGroup.js          |  19 ++
+ src/server/dependencies.js              |   7 +
+ src/shared/core/BaseSocketClient.js     |  13 +-
+ 12 files changed, 922 insertions(+), 7 deletions(-)
+ create mode 100644 src/client/core/RtcClient.js
+ create mode 100644 src/server/core/RtcPeer.js
+
+diff --git a/package-lock.json b/package-lock.json
+index 04cf4f6..c0dbd69 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -11,7 +11,8 @@
+       "dependencies": {
+         "express": "^4.13.3",
+         "faye-websocket": "^0.10.0",
+-        "influx": "^4.0.1"
++        "influx": "^4.0.1",
++        "node-datachannel": "0.32.3"
+       },
+       "devDependencies": {
+         "@eslint/js": "^10.0.1",
+@@ -35,6 +36,7 @@
+       },
+       "optionalDependencies": {
+         "MD5": "^1.3.0",
++        "node-datachannel": "0.32.3",
+         "usage": "^0.7.0"
+       }
+     },
+@@ -1499,6 +1501,27 @@
+         "node": "18 || 20 || >=22"
+       }
+     },
++    "node_modules/base64-js": {
++      "version": "1.5.1",
++      "resolved": "https://registry.npmjs.org/base64-js/-/base64-js-1.5.1.tgz",
++      "integrity": "sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/feross"
++        },
++        {
++          "type": "patreon",
++          "url": "https://www.patreon.com/feross"
++        },
++        {
++          "type": "consulting",
++          "url": "https://feross.org/support"
++        }
++      ],
++      "license": "MIT",
++      "optional": true
++    },
+     "node_modules/bcrypt-pbkdf": {
+       "version": "1.0.2",
+       "resolved": "https://registry.npmjs.org/bcrypt-pbkdf/-/bcrypt-pbkdf-1.0.2.tgz",
+@@ -1518,6 +1541,18 @@
+         "file-uri-to-path": "1.0.0"
+       }
+     },
++    "node_modules/bl": {
++      "version": "4.1.0",
++      "resolved": "https://registry.npmjs.org/bl/-/bl-4.1.0.tgz",
++      "integrity": "sha512-1W07cM9gS6DcLperZfFSj+bWLtaPGSOHWhPiGzXmvVJbRLdG82sH/Kn8EtW1VqWVA54AKf2h5k5BbnIbwF3h6w==",
++      "license": "MIT",
++      "optional": true,
++      "dependencies": {
++        "buffer": "^5.5.0",
++        "inherits": "^2.0.4",
++        "readable-stream": "^3.4.0"
++      }
++    },
+     "node_modules/body-parser": {
+       "version": "1.20.3",
+       "resolved": "https://registry.npmjs.org/body-parser/-/body-parser-1.20.3.tgz",
+@@ -1555,6 +1590,31 @@
+         "node": "18 || 20 || >=22"
+       }
+     },
++    "node_modules/buffer": {
++      "version": "5.7.1",
++      "resolved": "https://registry.npmjs.org/buffer/-/buffer-5.7.1.tgz",
++      "integrity": "sha512-EHcyIPBQ4BSGlvjB16k5KgAJ27CIsHY/2JBmCRReo48y9rQ3MaUzWX3KVlBa4U7MyX02HdVj0K7C3WaB3ju7FQ==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/feross"
++        },
++        {
++          "type": "patreon",
++          "url": "https://www.patreon.com/feross"
++        },
++        {
++          "type": "consulting",
++          "url": "https://feross.org/support"
++        }
++      ],
++      "license": "MIT",
++      "optional": true,
++      "dependencies": {
++        "base64-js": "^1.3.1",
++        "ieee754": "^1.1.13"
++      }
++    },
+     "node_modules/bytes": {
+       "version": "3.1.2",
+       "resolved": "https://registry.npmjs.org/bytes/-/bytes-3.1.2.tgz",
+@@ -1625,6 +1685,13 @@
+         "url": "https://paulmillr.com/funding/"
+       }
+     },
++    "node_modules/chownr": {
++      "version": "1.1.4",
++      "resolved": "https://registry.npmjs.org/chownr/-/chownr-1.1.4.tgz",
++      "integrity": "sha512-jJ0bqzaylmJtVnNgzTeSOs8DPavpbYgEr/b0YL8/2GO3xJEhInFmhKMUnEJQjZumK7KXGFhUy89PrsJWlakBVg==",
++      "license": "ISC",
++      "optional": true
++    },
+     "node_modules/combined-stream": {
+       "version": "1.0.8",
+       "resolved": "https://registry.npmjs.org/combined-stream/-/combined-stream-1.0.8.tgz",
+@@ -1732,6 +1799,32 @@
+         "ms": "2.0.0"
+       }
+     },
++    "node_modules/decompress-response": {
++      "version": "6.0.0",
++      "resolved": "https://registry.npmjs.org/decompress-response/-/decompress-response-6.0.0.tgz",
++      "integrity": "sha512-aW35yZM6Bb/4oJlZncMH2LCoZtJXTRxES17vE3hoRiowU2kWHaJKFkSBDnDR+cm9J+9QhXmREyIfv0pji9ejCQ==",
++      "license": "MIT",
++      "optional": true,
++      "dependencies": {
++        "mimic-response": "^3.1.0"
++      },
++      "engines": {
++        "node": ">=10"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
++    "node_modules/deep-extend": {
++      "version": "0.6.0",
++      "resolved": "https://registry.npmjs.org/deep-extend/-/deep-extend-0.6.0.tgz",
++      "integrity": "sha512-LOHxIOaPYdHlJRtCQfDIVZtfw/ufM8+rVj649RIHzcm/vGwQRXFt6OPqIFWsm2XEMrNIEtWR64sY1LEKD2vAOA==",
++      "license": "MIT",
++      "optional": true,
++      "engines": {
++        "node": ">=4.0.0"
++      }
++    },
+     "node_modules/deep-is": {
+       "version": "0.1.4",
+       "resolved": "https://registry.npmjs.org/deep-is/-/deep-is-0.1.4.tgz",
+@@ -1820,6 +1913,16 @@
+         "node": ">= 0.8"
+       }
+     },
++    "node_modules/end-of-stream": {
++      "version": "1.4.5",
++      "resolved": "https://registry.npmjs.org/end-of-stream/-/end-of-stream-1.4.5.tgz",
++      "integrity": "sha512-ooEGc6HP26xXq/N+GCGOT0JKCLDGrq2bQUZrQ7gyrJiZANJ/8YDTxTpQBXGMn+WbIQXNVpyWymm7KYVICQnyOg==",
++      "license": "MIT",
++      "optional": true,
++      "dependencies": {
++        "once": "^1.4.0"
++      }
++    },
+     "node_modules/es-define-property": {
+       "version": "1.0.1",
+       "resolved": "https://registry.npmjs.org/es-define-property/-/es-define-property-1.0.1.tgz",
+@@ -2103,6 +2206,16 @@
+         "node": ">= 0.6"
+       }
+     },
++    "node_modules/expand-template": {
++      "version": "2.0.3",
++      "resolved": "https://registry.npmjs.org/expand-template/-/expand-template-2.0.3.tgz",
++      "integrity": "sha512-XYfuKMvj4O35f/pOXLObndIRvyQ+/+6AhODh+OKWj9S9498pHHn/IMszH+gt0fBCRWMNfk1ZSp5x3AifmnI2vg==",
++      "license": "(MIT OR WTFPL)",
++      "optional": true,
++      "engines": {
++        "node": ">=6"
++      }
++    },
+     "node_modules/express": {
+       "version": "4.21.2",
+       "resolved": "https://registry.npmjs.org/express/-/express-4.21.2.tgz",
+@@ -2312,6 +2425,13 @@
+         "node": ">= 0.6"
+       }
+     },
++    "node_modules/fs-constants": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/fs-constants/-/fs-constants-1.0.0.tgz",
++      "integrity": "sha512-y6OAwoSIf7FyjMIv94u+b5rdheZEjzR63GTyZJm5qh4Bi+2YgwLCcI/fPFZkL5PSixOt6ZNKm+w+Hfp/Bciwow==",
++      "license": "MIT",
++      "optional": true
++    },
+     "node_modules/fsevents": {
+       "version": "2.3.3",
+       "resolved": "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz",
+@@ -2393,6 +2513,13 @@
+         "assert-plus": "^1.0.0"
+       }
+     },
++    "node_modules/github-from-package": {
++      "version": "0.0.0",
++      "resolved": "https://registry.npmjs.org/github-from-package/-/github-from-package-0.0.0.tgz",
++      "integrity": "sha512-SyHy3T1v2NUXn29OsWdxmK6RwHD+vkj3v8en8AOBZ1wBQ/hCAQ5bAQTD02kW4W9tUp/3Qh6J8r9EvntiyCmOOw==",
++      "license": "MIT",
++      "optional": true
++    },
+     "node_modules/glob-parent": {
+       "version": "6.0.2",
+       "resolved": "https://registry.npmjs.org/glob-parent/-/glob-parent-6.0.2.tgz",
+@@ -2527,6 +2654,27 @@
+         "node": ">=0.10.0"
+       }
+     },
++    "node_modules/ieee754": {
++      "version": "1.2.1",
++      "resolved": "https://registry.npmjs.org/ieee754/-/ieee754-1.2.1.tgz",
++      "integrity": "sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/feross"
++        },
++        {
++          "type": "patreon",
++          "url": "https://www.patreon.com/feross"
++        },
++        {
++          "type": "consulting",
++          "url": "https://feross.org/support"
++        }
++      ],
++      "license": "BSD-3-Clause",
++      "optional": true
++    },
+     "node_modules/ignore": {
+       "version": "5.3.2",
+       "resolved": "https://registry.npmjs.org/ignore/-/ignore-5.3.2.tgz",
+@@ -2570,6 +2718,13 @@
+       "integrity": "sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==",
+       "license": "ISC"
+     },
++    "node_modules/ini": {
++      "version": "1.3.8",
++      "resolved": "https://registry.npmjs.org/ini/-/ini-1.3.8.tgz",
++      "integrity": "sha512-JV/yugV2uzW5iMRSiZAyDtQd+nxtUnjeLt0acNdw98kKLrvuRVyB80tsREOE7yvGVgalhZ6RNXCmEHkUKBKxew==",
++      "license": "ISC",
++      "optional": true
++    },
+     "node_modules/ipaddr.js": {
+       "version": "1.9.1",
+       "resolved": "https://registry.npmjs.org/ipaddr.js/-/ipaddr.js-1.9.1.tgz",
+@@ -2811,6 +2966,19 @@
+         "node": ">= 0.6"
+       }
+     },
++    "node_modules/mimic-response": {
++      "version": "3.1.0",
++      "resolved": "https://registry.npmjs.org/mimic-response/-/mimic-response-3.1.0.tgz",
++      "integrity": "sha512-z0yWI+4FDrrweS8Zmt4Ej5HdJmky15+L2e6Wgn3+iK5fWzb6T3fhNFq2+MeTRb064c6Wr4N/wv0DzQTjNzHNGQ==",
++      "license": "MIT",
++      "optional": true,
++      "engines": {
++        "node": ">=10"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
+     "node_modules/minimatch": {
+       "version": "10.2.5",
+       "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-10.2.5.tgz",
+@@ -2827,6 +2995,23 @@
+         "url": "https://github.com/sponsors/isaacs"
+       }
+     },
++    "node_modules/minimist": {
++      "version": "1.2.8",
++      "resolved": "https://registry.npmjs.org/minimist/-/minimist-1.2.8.tgz",
++      "integrity": "sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==",
++      "license": "MIT",
++      "optional": true,
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/mkdirp-classic": {
++      "version": "0.5.3",
++      "resolved": "https://registry.npmjs.org/mkdirp-classic/-/mkdirp-classic-0.5.3.tgz",
++      "integrity": "sha512-gKLcREMhtuZRwRAfqP3RFW+TK4JqApVBtOIftVgjuABpAtpxhPGaDcfvbhNvD0B8iD1oUr/txX35NjcaY6Ns/A==",
++      "license": "MIT",
++      "optional": true
++    },
+     "node_modules/ms": {
+       "version": "2.0.0",
+       "resolved": "https://registry.npmjs.org/ms/-/ms-2.0.0.tgz",
+@@ -2859,6 +3044,13 @@
+         "node": "^10 || ^12 || ^13.7 || ^14 || >=15.0.1"
+       }
+     },
++    "node_modules/napi-build-utils": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmjs.org/napi-build-utils/-/napi-build-utils-2.0.0.tgz",
++      "integrity": "sha512-GEbrYkbfF7MoNaoh2iGG84Mnf/WZfB0GdGEsM8wz7Expx/LlWf5U8t9nvJKXSp3qr5IsEbK04cBGhol/KwOsWA==",
++      "license": "MIT",
++      "optional": true
++    },
+     "node_modules/natural-compare": {
+       "version": "1.4.0",
+       "resolved": "https://registry.npmjs.org/natural-compare/-/natural-compare-1.4.0.tgz",
+@@ -2875,6 +3067,19 @@
+         "node": ">= 0.6"
+       }
+     },
++    "node_modules/node-abi": {
++      "version": "3.99.0",
++      "resolved": "https://registry.npmjs.org/node-abi/-/node-abi-3.99.0.tgz",
++      "integrity": "sha512-lLdwkeg2XUVPTHqWjPltTxH81zbQNbUWC+AEb9ni50KjxkUzAAx1HGtMT21sbntzfUGfIphhcklvs3imJeqDXw==",
++      "license": "MIT",
++      "optional": true,
++      "dependencies": {
++        "semver": "^7.3.5"
++      },
++      "engines": {
++        "node": ">=10"
++      }
++    },
+     "node_modules/node-addon-api": {
+       "version": "7.1.1",
+       "resolved": "https://registry.npmjs.org/node-addon-api/-/node-addon-api-7.1.1.tgz",
+@@ -2883,6 +3088,20 @@
+       "license": "MIT",
+       "optional": true
+     },
++    "node_modules/node-datachannel": {
++      "version": "0.32.3",
++      "resolved": "https://registry.npmjs.org/node-datachannel/-/node-datachannel-0.32.3.tgz",
++      "integrity": "sha512-Aok1ZhLsll472lRefgWYuWJ0070jh0ecHravTdRyZEmoESumebMEQV8Y+poBwSW2ZbEwAokAOGsK5Cu8pDDT2g==",
++      "hasInstallScript": true,
++      "license": "MPL 2.0",
++      "optional": true,
++      "dependencies": {
++        "prebuild-install": "^7.1.3"
++      },
++      "engines": {
++        "node": ">=18.20.0"
++      }
++    },
+     "node_modules/oauth-sign": {
+       "version": "0.9.0",
+       "resolved": "https://registry.npmjs.org/oauth-sign/-/oauth-sign-0.9.0.tgz",
+@@ -2916,6 +3135,16 @@
+         "node": ">= 0.8"
+       }
+     },
++    "node_modules/once": {
++      "version": "1.4.0",
++      "resolved": "https://registry.npmjs.org/once/-/once-1.4.0.tgz",
++      "integrity": "sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==",
++      "license": "ISC",
++      "optional": true,
++      "dependencies": {
++        "wrappy": "1"
++      }
++    },
+     "node_modules/option-resolver.js": {
+       "version": "1.1.0",
+       "resolved": "https://registry.npmjs.org/option-resolver.js/-/option-resolver.js-1.1.0.tgz",
+@@ -3064,6 +3293,44 @@
+         "node": "^10 || ^12 || >=14"
+       }
+     },
++    "node_modules/prebuild-install": {
++      "version": "7.1.3",
++      "resolved": "https://registry.npmjs.org/prebuild-install/-/prebuild-install-7.1.3.tgz",
++      "integrity": "sha512-8Mf2cbV7x1cXPUILADGI3wuhfqWvtiLA1iclTDbFRZkgRQS0NqsPZphna9V+HyTEadheuPmjaJMsbzKQFOzLug==",
++      "deprecated": "No longer maintained. Please contact the author of the relevant native addon; alternatives are available.",
++      "license": "MIT",
++      "optional": true,
++      "dependencies": {
++        "detect-libc": "^2.0.0",
++        "expand-template": "^2.0.3",
++        "github-from-package": "0.0.0",
++        "minimist": "^1.2.3",
++        "mkdirp-classic": "^0.5.3",
++        "napi-build-utils": "^2.0.0",
++        "node-abi": "^3.3.0",
++        "pump": "^3.0.0",
++        "rc": "^1.2.7",
++        "simple-get": "^4.0.0",
++        "tar-fs": "^2.0.0",
++        "tunnel-agent": "^0.6.0"
++      },
++      "bin": {
++        "prebuild-install": "bin.js"
++      },
++      "engines": {
++        "node": ">=10"
++      }
++    },
++    "node_modules/prebuild-install/node_modules/detect-libc": {
++      "version": "2.1.2",
++      "resolved": "https://registry.npmjs.org/detect-libc/-/detect-libc-2.1.2.tgz",
++      "integrity": "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==",
++      "license": "Apache-2.0",
++      "optional": true,
++      "engines": {
++        "node": ">=8"
++      }
++    },
+     "node_modules/prelude-ls": {
+       "version": "1.2.1",
+       "resolved": "https://registry.npmjs.org/prelude-ls/-/prelude-ls-1.2.1.tgz",
+@@ -3099,6 +3366,17 @@
+         "url": "https://github.com/sponsors/lupomontero"
+       }
+     },
++    "node_modules/pump": {
++      "version": "3.0.4",
++      "resolved": "https://registry.npmjs.org/pump/-/pump-3.0.4.tgz",
++      "integrity": "sha512-VS7sjc6KR7e1ukRFhQSY5LM2uBWAUPiOPa/A3mkKmiMwSmRFUITt0xuj+/lesgnCv+dPIEYlkzrcyXgquIHMcA==",
++      "license": "MIT",
++      "optional": true,
++      "dependencies": {
++        "end-of-stream": "^1.1.0",
++        "once": "^1.3.1"
++      }
++    },
+     "node_modules/punycode": {
+       "version": "2.3.1",
+       "resolved": "https://registry.npmjs.org/punycode/-/punycode-2.3.1.tgz",
+@@ -3147,6 +3425,37 @@
+         "node": ">= 0.8"
+       }
+     },
++    "node_modules/rc": {
++      "version": "1.2.8",
++      "resolved": "https://registry.npmjs.org/rc/-/rc-1.2.8.tgz",
++      "integrity": "sha512-y3bGgqKj3QBdxLbLkomlohkvsA8gdAiUQlSBJnBhfn+BPxg4bc62d8TcBW15wavDfgexCgccckhcZvywyQYPOw==",
++      "license": "(BSD-2-Clause OR MIT OR Apache-2.0)",
++      "optional": true,
++      "dependencies": {
++        "deep-extend": "^0.6.0",
++        "ini": "~1.3.0",
++        "minimist": "^1.2.0",
++        "strip-json-comments": "~2.0.1"
++      },
++      "bin": {
++        "rc": "cli.js"
++      }
++    },
++    "node_modules/readable-stream": {
++      "version": "3.6.2",
++      "resolved": "https://registry.npmjs.org/readable-stream/-/readable-stream-3.6.2.tgz",
++      "integrity": "sha512-9u/sniCrY3D5WdsERHzHE4G2YCXqoG5FTHUiCC4SIbr6XcLZBY05ya9EKjYek9O5xOAwjGq+1JdGBAS7Q9ScoA==",
++      "license": "MIT",
++      "optional": true,
++      "dependencies": {
++        "inherits": "^2.0.3",
++        "string_decoder": "^1.1.1",
++        "util-deprecate": "^1.0.1"
++      },
++      "engines": {
++        "node": ">= 6"
++      }
++    },
+     "node_modules/readdirp": {
+       "version": "4.1.2",
+       "resolved": "https://registry.npmjs.org/readdirp/-/readdirp-4.1.2.tgz",
+@@ -3289,6 +3598,19 @@
+         "@parcel/watcher": "^2.4.1"
+       }
+     },
++    "node_modules/semver": {
++      "version": "7.8.5",
++      "resolved": "https://registry.npmjs.org/semver/-/semver-7.8.5.tgz",
++      "integrity": "sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==",
++      "license": "ISC",
++      "optional": true,
++      "bin": {
++        "semver": "bin/semver.js"
++      },
++      "engines": {
++        "node": ">=10"
++      }
++    },
+     "node_modules/send": {
+       "version": "0.19.0",
+       "resolved": "https://registry.npmjs.org/send/-/send-0.19.0.tgz",
+@@ -3444,6 +3766,53 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/simple-concat": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/simple-concat/-/simple-concat-1.0.1.tgz",
++      "integrity": "sha512-cSFtAPtRhljv69IK0hTVZQ+OfE9nePi/rtJmw5UjHeVyVroEqJXP1sFztKUy1qU+xvz3u/sfYJLa947b7nAN2Q==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/feross"
++        },
++        {
++          "type": "patreon",
++          "url": "https://www.patreon.com/feross"
++        },
++        {
++          "type": "consulting",
++          "url": "https://feross.org/support"
++        }
++      ],
++      "license": "MIT",
++      "optional": true
++    },
++    "node_modules/simple-get": {
++      "version": "4.0.1",
++      "resolved": "https://registry.npmjs.org/simple-get/-/simple-get-4.0.1.tgz",
++      "integrity": "sha512-brv7p5WgH0jmQJr1ZDDfKDOSeWWg+OVypG99A/5vYGPqJ6pxiaHLy8nxtFjBA7oMa01ebA9gfh1uMCFqOuXxvA==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/feross"
++        },
++        {
++          "type": "patreon",
++          "url": "https://www.patreon.com/feross"
++        },
++        {
++          "type": "consulting",
++          "url": "https://feross.org/support"
++        }
++      ],
++      "license": "MIT",
++      "optional": true,
++      "dependencies": {
++        "decompress-response": "^6.0.0",
++        "once": "^1.3.1",
++        "simple-concat": "^1.0.0"
++      }
++    },
+     "node_modules/source-map-js": {
+       "version": "1.2.1",
+       "resolved": "https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz",
+@@ -3488,6 +3857,56 @@
+         "node": ">= 0.8"
+       }
+     },
++    "node_modules/string_decoder": {
++      "version": "1.3.0",
++      "resolved": "https://registry.npmjs.org/string_decoder/-/string_decoder-1.3.0.tgz",
++      "integrity": "sha512-hkRX8U1WjJFd8LsDJ2yQ/wWWxaopEsABU1XfkM8A+j0+85JAGppt16cr1Whg6KIbb4okU6Mql6BOj+uup/wKeA==",
++      "license": "MIT",
++      "optional": true,
++      "dependencies": {
++        "safe-buffer": "~5.2.0"
++      }
++    },
++    "node_modules/strip-json-comments": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmjs.org/strip-json-comments/-/strip-json-comments-2.0.1.tgz",
++      "integrity": "sha512-4gB8na07fecVVkOI6Rs4e7T6NOTki5EmL7TUduTs6bu3EdnSycntVJ4re8kgZA+wx9IueI2Y11bfbgwtzuE0KQ==",
++      "license": "MIT",
++      "optional": true,
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/tar-fs": {
++      "version": "2.1.5",
++      "resolved": "https://registry.npmjs.org/tar-fs/-/tar-fs-2.1.5.tgz",
++      "integrity": "sha512-OboTd8mmMhZDNPV+UjQcK9yKAatXu2aJ+r1w4im1Otd4M4fl2hwvdoXUxIYHFTHWK/3y3FarBP70v3vwmGlOxw==",
++      "license": "MIT",
++      "optional": true,
++      "dependencies": {
++        "chownr": "^1.1.1",
++        "mkdirp-classic": "^0.5.2",
++        "pump": "^3.0.0",
++        "tar-stream": "^2.1.4"
++      }
++    },
++    "node_modules/tar-stream": {
++      "version": "2.2.0",
++      "resolved": "https://registry.npmjs.org/tar-stream/-/tar-stream-2.2.0.tgz",
++      "integrity": "sha512-ujeqbceABgwMZxEJnk2HDY2DlnUZ+9oEcb1KzTVfYHio0UE6dG71n60d8D2I4qNvleWrrXpmjpt7vZeF1LnMZQ==",
++      "license": "MIT",
++      "optional": true,
++      "dependencies": {
++        "bl": "^4.0.3",
++        "end-of-stream": "^1.4.1",
++        "fs-constants": "^1.0.0",
++        "inherits": "^2.0.3",
++        "readable-stream": "^3.1.1"
++      },
++      "engines": {
++        "node": ">=6"
++      }
++    },
+     "node_modules/toidentifier": {
+       "version": "1.0.1",
+       "resolved": "https://registry.npmjs.org/toidentifier/-/toidentifier-1.0.1.tgz",
+@@ -3600,6 +4019,13 @@
+         "node": ">= 0.10.x"
+       }
+     },
++    "node_modules/util-deprecate": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/util-deprecate/-/util-deprecate-1.0.2.tgz",
++      "integrity": "sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==",
++      "license": "MIT",
++      "optional": true
++    },
+     "node_modules/utils-merge": {
+       "version": "1.0.1",
+       "resolved": "https://registry.npmjs.org/utils-merge/-/utils-merge-1.0.1.tgz",
+@@ -3763,6 +4189,13 @@
+         "node": ">=0.10.0"
+       }
+     },
++    "node_modules/wrappy": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/wrappy/-/wrappy-1.0.2.tgz",
++      "integrity": "sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==",
++      "license": "ISC",
++      "optional": true
++    },
+     "node_modules/yocto-queue": {
+       "version": "0.1.0",
+       "resolved": "https://registry.npmjs.org/yocto-queue/-/yocto-queue-0.1.0.tgz",
+diff --git a/package.json b/package.json
+index 8edd84e..ba100d4 100644
+--- a/package.json
++++ b/package.json
+@@ -55,6 +55,7 @@
+   },
+   "optionalDependencies": {
+     "MD5": "^1.3.0",
++    "node-datachannel": "0.32.3",
+     "usage": "^0.7.0"
+   },
+   "scripts": {
+diff --git a/src/client/controller/GameController.js b/src/client/controller/GameController.js
+index 4a4a212..a4ec156 100644
+--- a/src/client/controller/GameController.js
++++ b/src/client/controller/GameController.js
+@@ -161,7 +161,9 @@ GameController.prototype.onMove = function(e)
+         data.seq = avatar.predictor.addInput(move);
+     }
+ 
+-    this.client.addEvent('player:move', data);
++    if (!this.client.rtc || !this.client.rtc.sendInput([['player:move', data]])) {
++        this.client.addEvent('player:move', data);
++    }
+ };
+ 
+ /**
+diff --git a/src/client/core/RtcClient.js b/src/client/core/RtcClient.js
+new file mode 100644
+index 0000000..9a7cfe7
+--- /dev/null
++++ b/src/client/core/RtcClient.js
+@@ -0,0 +1,186 @@
++/**
++ * WebRTC client
++ *
++ * Opens data channels to the server, negotiated over the WebSocket: game state is
++ * received on an unreliable unordered channel and inputs are sent on a reliable
++ * ordered channel. Everything falls back to the WebSocket until the channels open.
++ *
++ * @param {SocketClient} client
++ */
++function RtcClient(client)
++{
++    this.client     = client;
++    this.connection = null;
++    this.state      = null;
++    this.input      = null;
++    this.sequence   = 0;
++
++    this.onAnswer      = this.onAnswer.bind(this);
++    this.onCandidate   = this.onCandidate.bind(this);
++    this.onUnavailable = this.onUnavailable.bind(this);
++    this.onState       = this.onState.bind(this);
++
++    this.client.on('rtc:answer', this.onAnswer);
++    this.client.on('rtc:candidate', this.onCandidate);
++    this.client.on('rtc:unavailable', this.onUnavailable);
++}
++
++/**
++ * Is WebRTC supported by the browser?
++ *
++ * @return {Boolean}
++ */
++RtcClient.isSupported = function()
++{
++    return typeof(window.RTCPeerConnection) === 'function';
++};
++
++/**
++ * ICE servers
++ *
++ * @type {Array}
++ */
++RtcClient.prototype.iceServers = [{urls: 'stun:stun.l.google.com:19302'}];
++
++/**
++ * Start negotiation
++ */
++RtcClient.prototype.start = function()
++{
++    var client = this.client,
++        connection;
++
++    try {
++        connection = new RTCPeerConnection({iceServers: this.iceServers});
++    } catch (error) {
++        console.warn('WebRTC unavailable: %s', error);
++        return;
++    }
++
++    this.connection = connection;
++    this.state      = connection.createDataChannel('state', {ordered: false, maxRetransmits: 0});
++    this.input      = connection.createDataChannel('input', {ordered: true});
++
++    this.state.onmessage = this.onState;
++    this.state.onopen    = function () { console.info('WebRTC data channels open.'); };
++
++    connection.onicecandidate = function (e) {
++        if (e.candidate && e.candidate.candidate) {
++            client.addEvent('rtc:candidate', {candidate: e.candidate.candidate, mid: e.candidate.sdpMid}, null, true);
++        }
++    };
++
++    connection.createOffer()
++        .then(function (offer) { return connection.setLocalDescription(offer); })
++        .then(function () {
++            client.addEvent('rtc:offer', {sdp: connection.localDescription.sdp, type: connection.localDescription.type}, null, true);
++        })
++        .catch(this.onUnavailable);
++};
++
++/**
++ * On answer
++ *
++ * @param {Event} e
++ */
++RtcClient.prototype.onAnswer = function(e)
++{
++    if (this.connection && e.detail) {
++        this.connection.setRemoteDescription({sdp: e.detail.sdp, type: e.detail.type}).catch(this.onUnavailable);
++    }
++};
++
++/**
++ * On remote candidate
++ *
++ * @param {Event} e
++ */
++RtcClient.prototype.onCandidate = function(e)
++{
++    if (this.connection && e.detail && e.detail.candidate) {
++        this.connection.addIceCandidate({candidate: e.detail.candidate, sdpMid: e.detail.mid}).catch(function (error) {
++            console.warn('WebRTC candidate error: %s', error);
++        });
++    }
++};
++
++/**
++ * On state packet: [sequence, events]. Out of date packets are dropped.
++ *
++ * @param {MessageEvent} e
++ */
++RtcClient.prototype.onState = function(e)
++{
++    var packet = JSON.parse(e.data);
++
++    if (packet[0] > this.sequence) {
++        this.sequence = packet[0];
++        this.client.handleEvents(packet[1]);
++    }
++};
++
++/**
++ * Send events on the input channel
++ *
++ * @param {Array} events
++ *
++ * @return {Boolean} Whether the events were sent
++ */
++RtcClient.prototype.sendInput = function(events)
++{
++    if (this.input && this.input.readyState === 'open') {
++        this.input.send(JSON.stringify(events));
++        return true;
++    }
++
++    return false;
++};
++
++/**
++ * Is the state channel open?
++ *
++ * @return {Boolean}
++ */
++RtcClient.prototype.isOpen = function()
++{
++    return this.state !== null && this.state.readyState === 'open';
++};
++
++/**
++ * On unavailable
++ *
++ * @param {*} error
++ */
++RtcClient.prototype.onUnavailable = function(error)
++{
++    if (error && error.message) {
++        console.warn('WebRTC unavailable: %s', error.message);
++    }
++
++    this.close();
++};
++
++/**
++ * Close
++ */
++RtcClient.prototype.close = function()
++{
++    if (this.connection) {
++        this.connection.close();
++    }
++
++    this.connection = null;
++    this.state      = null;
++    this.input      = null;
++};
++
++/**
++ * Destroy
++ */
++RtcClient.prototype.destroy = function()
++{
++    this.close();
++    this.client.off('rtc:answer', this.onAnswer);
++    this.client.off('rtc:candidate', this.onCandidate);
++    this.client.off('rtc:unavailable', this.onUnavailable);
++};
+diff --git a/src/client/core/SocketClient.js b/src/client/core/SocketClient.js
+index 02c8b56..441e310 100644
+--- a/src/client/core/SocketClient.js
++++ b/src/client/core/SocketClient.js
+@@ -5,6 +5,7 @@ function SocketClient()
+ {
+     this.id        = null;
+     this.connected = false;
++    this.rtc       = null;
+ 
+     this.onError      = this.onError.bind(this);
+     this.onOpen       = this.onOpen.bind(this);
+@@ -51,6 +52,12 @@ SocketClient.prototype.onConnection = function(id)
+     this.connected = true;
+ 
+     this.start();
++
++    if (RtcClient.isSupported()) {
++        this.rtc = new RtcClient(this);
++        this.rtc.start();
++    }
++
+     this.emit('connected');
+ };
+ 
+@@ -68,6 +75,11 @@ SocketClient.prototype.onClose = function(e)
+ 
+     this.stop();
+ 
++    if (this.rtc) {
++        this.rtc.destroy();
++        this.rtc = null;
++    }
++
+     this.emit('disconnected');
+ };
+ 
+diff --git a/src/client/repository/GameRepository.js b/src/client/repository/GameRepository.js
+index daebbc6..7c42613 100644
+--- a/src/client/repository/GameRepository.js
++++ b/src/client/repository/GameRepository.js
+@@ -193,7 +193,8 @@ GameRepository.prototype.onPosition = function(e)
+ {
+     var avatar = this.game.avatars.getById(e.detail[0]);
+ 
+-    if (avatar) {
++    // State may arrive out of order over WebRTC: running avatars only move while alive.
++    if (avatar && (avatar.alive || !this.game.frame)) {
+         avatar.setPositionFromServer(
+             this.compressor.decompress(e.detail[1]),
+             this.compressor.decompress(e.detail[2]),
+diff --git a/src/server/controller/GameController.js b/src/server/controller/GameController.js
+index 428d365..30437d7 100644
+--- a/src/server/controller/GameController.js
++++ b/src/server/controller/GameController.js
+@@ -353,7 +353,22 @@ GameController.prototype.onPosition = function(avatar)
+         data.push(avatar.inputSequence);
+     }
+ 
+-    this.socketGroup.addEvent('position', data);
++    this.addStateEvent('position', data);
++};
++
++/**
++ * Add a frequent game state event: sent over WebRTC when available while the game loop runs
++ *
++ * @param {String} name
++ * @param {Array} data
++ */
++GameController.prototype.addStateEvent = function(name, data)
++{
++    if (this.game.frame) {
++        this.socketGroup.addVolatileEvent(name, data);
++    } else {
++        this.socketGroup.addEvent(name, data);
++    }
+ };
+ 
+ /**
+@@ -363,7 +378,7 @@ GameController.prototype.onPosition = function(avatar)
+  */
+ GameController.prototype.onAngle = function(avatar)
+ {
+-    this.socketGroup.addEvent('angle', [
++    this.addStateEvent('angle', [
+         avatar.id,
+         this.compressor.compress(avatar.angle)
+     ]);
+diff --git a/src/server/core/RtcPeer.js b/src/server/core/RtcPeer.js
+new file mode 100644
+index 0000000..d5b2f64
+--- /dev/null
++++ b/src/server/core/RtcPeer.js
+@@ -0,0 +1,201 @@
++/**
++ * WebRTC peer for a socket client
++ *
++ * Negotiated over the WebSocket. Carries frequent, latency-sensitive game state on an
++ * unreliable unordered data channel ("state", server to client) and player inputs on a
++ * reliable ordered data channel ("input", client to server). The WebSocket stays the
++ * fallback and carries everything else.
++ *
++ * @param {SocketClient} client
++ */
++function RtcPeer(client)
++{
++    this.client     = client;
++    this.connection = null;
++    this.state      = null;
++    this.events     = [];
++    this.sequence   = 0;
++
++    this.onOffer     = this.onOffer.bind(this);
++    this.onCandidate = this.onCandidate.bind(this);
++
++    this.client.on('rtc:offer', this.onOffer);
++    this.client.on('rtc:candidate', this.onCandidate);
++}
++
++/**
++ * Is WebRTC available on this server?
++ *
++ * @return {Boolean}
++ */
++RtcPeer.isAvailable = function()
++{
++    return nodeDataChannel !== false && process.env.CURVYTRON_WEBRTC !== '0';
++};
++
++/**
++ * ICE servers
++ *
++ * @type {Array}
++ */
++RtcPeer.prototype.iceServers = (process.env.CURVYTRON_ICE_SERVERS || 'stun:stun.l.google.com:19302').split(',');
++
++/**
++ * Inputs accepted on the input channel
++ *
++ * @type {Array}
++ */
++RtcPeer.prototype.inputEvents = ['player:move'];
++
++/**
++ * On offer
++ *
++ * @param {Object} data
++ */
++RtcPeer.prototype.onOffer = function(data)
++{
++    if (!RtcPeer.isAvailable() || !data || typeof(data.sdp) !== 'string') {
++        return this.client.addEvent('rtc:unavailable');
++    }
++
++    this.close();
++
++    var client     = this.client,
++        connection = new nodeDataChannel.PeerConnection('client-' + client.id, {iceServers: this.iceServers});
++
++    this.connection = connection;
++
++    connection.onLocalDescription(function (sdp, type) {
++        client.addEvent('rtc:answer', {sdp: sdp, type: type}, null, true);
++    });
++
++    connection.onLocalCandidate(function (candidate, mid) {
++        client.addEvent('rtc:candidate', {candidate: candidate, mid: mid}, null, true);
++    });
++
++    connection.onDataChannel(this.onDataChannel.bind(this));
++
++    try {
++        connection.setRemoteDescription(data.sdp, data.type || 'offer');
++    } catch (error) {
++        console.error('WebRTC offer error: %s', error);
++        this.close();
++    }
++};
++
++/**
++ * On remote candidate
++ *
++ * @param {Object} data
++ */
++RtcPeer.prototype.onCandidate = function(data)
++{
++    if (this.connection && data && data.candidate) {
++        try {
++            this.connection.addRemoteCandidate(data.candidate, data.mid || '0');
++        } catch (error) {
++            console.error('WebRTC candidate error: %s', error);
++        }
++    }
++};
++
++/**
++ * On data channel
++ *
++ * @param {DataChannel} channel
++ */
++RtcPeer.prototype.onDataChannel = function(channel)
++{
++    var peer = this;
++
++    if (channel.getLabel() === 'state') {
++        this.state = channel;
++        channel.onClosed(function () {
++            if (peer.state === channel) { peer.state = null; }
++        });
++    } else if (channel.getLabel() === 'input') {
++        channel.onMessage(function (message) {
++            peer.onInput(message);
++        });
++    }
++};
++
++/**
++ * On input message
++ *
++ * @param {String} message
++ */
++RtcPeer.prototype.onInput = function(message)
++{
++    var events;
++
++    try {
++        events = JSON.parse(message);
++    } catch (error) {
++        return;
++    }
++
++    if (!Array.isArray(events)) { return; }
++
++    events = events.filter(function (event) {
++        return Array.isArray(event) && this.inputEvents.indexOf(event[0]) >= 0;
++    }, this);
++
++    this.client.handleEvents(events);
++};
++
++/**
++ * Is the state channel open?
++ *
++ * @return {Boolean}
++ */
++RtcPeer.prototype.isOpen = function()
++{
++    return this.state !== null && this.state.isOpen();
++};
++
++/**
++ * Queue a state event
++ *
++ * @param {Array} event
++ */
++RtcPeer.prototype.addEvent = function(event)
++{
++    this.events.push(event);
++};
++
++/**
++ * Send queued state events as a single sequenced packet
++ */
++RtcPeer.prototype.flush = function()
++{
++    if (this.events.length > 0) {
++        if (this.isOpen()) {
++            try {
++                this.state.sendMessage(JSON.stringify([++this.sequence, this.events]));
++            } catch (error) {
++                console.error('WebRTC send error: %s', error);
++            }
++        }
++
++        this.events.length = 0;
++    }
++};
++
++/**
++ * Close the peer connection
++ */
++RtcPeer.prototype.close = function()
++{
++    this.state = null;
++    this.events.length = 0;
++
++    if (this.connection) {
++        try {
++            this.connection.close();
++        } catch (error) {
++            console.error('WebRTC close error: %s', error);
++        }
++        this.connection = null;
++    }
++};
+diff --git a/src/server/core/SocketClient.js b/src/server/core/SocketClient.js
+index e1e81a1..0d18bc1 100644
+--- a/src/server/core/SocketClient.js
++++ b/src/server/core/SocketClient.js
+@@ -15,6 +15,7 @@ function SocketClient(socket, interval, ip)
+     this.players    = new Collection([], 'id');
+     this.pingLogger = new PingLogger(this.socket);
+     this.tickrate   = new BaseTickrateLogger();
++    this.rtc        = new RtcPeer(this);
+ 
+     this.identify   = this.identify.bind(this);
+     this.onActivity = this.onActivity.bind(this);
+@@ -88,6 +89,33 @@ SocketClient.prototype.onActivity = function(active)
+  * @param {String} name
+  * @param {String} data
+  */
++SocketClient.prototype.addVolatileEvent = function (name, data)
++{
++    if (this.rtc && this.rtc.isOpen()) {
++        this.rtc.addEvent([name, data]);
++        this.start();
++    } else {
++        this.addEvent(name, data);
++    }
++};
++
++/**
++ * Flush events
++ */
++SocketClient.prototype.flush = function ()
++{
++    BaseSocketClient.prototype.flush.call(this);
++
++    if (this.rtc) {
++        this.rtc.flush();
++    }
++};
++
++/**
++ * Send events
++ *
++ * @param {Array} events
++ */
+ SocketClient.prototype.sendEvents = function (events)
+ {
+     this.tickrate.tick(events);
+@@ -100,6 +128,7 @@ SocketClient.prototype.sendEvents = function (events)
+ SocketClient.prototype.stop = function()
+ {
+     BaseSocketClient.prototype.stop.call(this);
++    this.rtc.close();
+     this.pingLogger.stop();
+     this.tickrate.stop();
+ };
+diff --git a/src/server/core/SocketGroup.js b/src/server/core/SocketGroup.js
+index fbb59cf..cc2f6da 100644
+--- a/src/server/core/SocketGroup.js
++++ b/src/server/core/SocketGroup.js
+@@ -47,6 +47,25 @@ SocketGroup.prototype.addEvents = function(events, force)
+     }
+ };
+ 
++/**
++ * Add a frequent state event to all clients (sent over WebRTC when available)
++ *
++ * @param {String} name
++ * @param {Object} data
++ */
++SocketGroup.prototype.addVolatileEvent = function(name, data)
++{
++    for (var client, i = this.clients.items.length - 1; i >= 0; i--) {
++        client = this.clients.items[i];
++
++        if (typeof(client.addVolatileEvent) === 'function') {
++            client.addVolatileEvent(name, data);
++        } else {
++            client.addEvent(name, data);
++        }
++    }
++};
++
+ /**
+  * Add an event to the list
+  *
+diff --git a/src/server/dependencies.js b/src/server/dependencies.js
+index e0cd1b8..20a1929 100644
+--- a/src/server/dependencies.js
++++ b/src/server/dependencies.js
+@@ -4,6 +4,7 @@ var EventEmitter = require('events').EventEmitter,
+     express = require('express'),
+     md5,
+     usage,
++    nodeDataChannel,
+     influx;
+ 
+ try {
+@@ -18,6 +19,12 @@ try {
+     usage = false;
+ }
+ 
++try {
++    nodeDataChannel = require('node-datachannel');
++} catch (error) {
++    nodeDataChannel = false;
++}
++
+ try {
+     influx = require('influx');
+ } catch (error) {
+diff --git a/src/shared/core/BaseSocketClient.js b/src/shared/core/BaseSocketClient.js
+index df054a5..12e9d82 100644
+--- a/src/shared/core/BaseSocketClient.js
++++ b/src/shared/core/BaseSocketClient.js
+@@ -207,8 +207,17 @@ BaseSocketClient.prototype.flush = function ()
+  */
+ BaseSocketClient.prototype.onMessage = function (e)
+ {
+-    var data = JSON.parse(e.data),
+-        length = data.length,
++    this.handleEvents(JSON.parse(e.data));
++};
++
++/**
++ * Handle decoded events
++ *
++ * @param {Array} data
++ */
++BaseSocketClient.prototype.handleEvents = function (data)
++{
++    var length = data.length,
+         name, source;
+ 
+     for (var i = 0; i < length; i++) {
