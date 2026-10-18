@@ -9,5 +9,6 @@ Applied in order with `git apply` on top of the pinned upstream commit in `src/a
 | `0003` | Client-side prediction with rollback: inputs carry a sequence number that the server echoes in position updates; the client rewinds to the latest authoritative state, replays unacknowledged inputs over one round trip, and smooths corrections. |
 | `0004` | While a game runs, position/angle updates go over an unreliable, unordered WebRTC data channel and inputs over a reliable one, negotiated over the WebSocket, which stays the fallback. Set `CURVYTRON_WEBRTC=0` to disable, `CURVYTRON_ICE_SERVERS` to change STUN/TURN servers. |
 | `0005` | Offline play: a service worker caches the app; offline (or with `?offline`), the game server runs in a Web Worker in the page. |
+| `0006` | Remote avatars: a faint ghost head and trail extrapolate each opponent from its last server state by the time since it arrived plus one round trip, so it is drawn at the same moment as the predicted local avatar. |
 
 To change them, check out the pinned commit, `git am patches/*.patch`, commit on top, and regenerate with `git format-patch <pinned commit>..HEAD -o patches --no-signature`.

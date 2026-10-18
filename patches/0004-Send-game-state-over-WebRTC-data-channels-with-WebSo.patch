@@ -1,7 +1,7 @@
 From 60a7aca4ee437fdcd959ba0a940b239b386087a8 Mon Sep 17 00:00:00 2001
 From: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
 Date: Sun, 18 Oct 2026 17:22:04 +0000
-Subject: [PATCH 4/5] Send game state over WebRTC data channels with WebSocket
+Subject: [PATCH 4/6] Send game state over WebRTC data channels with WebSocket
  fallback
 
 Clients negotiate a peer connection over the existing WebSocket. While a game is

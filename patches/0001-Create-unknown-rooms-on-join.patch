@@ -1,7 +1,7 @@
 From 1d1bfb10d6c202ef984d39c85ce5b4ee13c0a1c3 Mon Sep 17 00:00:00 2001
 From: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
 Date: Sun, 18 Oct 2026 17:11:09 +0000
-Subject: [PATCH 1/5] Create unknown rooms on join
+Subject: [PATCH 1/6] Create unknown rooms on join
 
 Co-Authored-By: Akshat Bubna <akshatb42@gmail.com>
 ---

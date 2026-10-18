@@ -1,7 +1,7 @@
 From 96bd2177181ef84c132cf4848412eba4754f1a6f Mon Sep 17 00:00:00 2001
 From: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
 Date: Sun, 18 Oct 2026 17:14:39 +0000
-Subject: [PATCH 2/5] Improve mobile touch controls and show scoreboard between
+Subject: [PATCH 2/6] Improve mobile touch controls and show scoreboard between
  rounds
 
 - Replace removed document.createTouch() with a string touch binding (touch controls threw on modern browsers)

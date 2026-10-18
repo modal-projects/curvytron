@@ -1,7 +1,7 @@
 From ab345c29172ac2dfa6bf53022acab3e0cf57d83d Mon Sep 17 00:00:00 2001
 From: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
 Date: Sun, 18 Oct 2026 17:18:29 +0000
-Subject: [PATCH 3/5] Add client-side prediction with rollback for local
+Subject: [PATCH 3/6] Add client-side prediction with rollback for local
  avatars
 
 Local inputs are tagged with a sequence number; the server echoes the last applied

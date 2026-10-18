@@ -1,12 +1,11 @@
 # curvytron
 
-A public multiplayer demo of [Modal Sticky Sessions](https://modal.com/docs/guide/sticky-sessions), running [Curvytron](https://github.com/Curvytron/curvytron) (MIT), a browser clone of _Achtung, die Kurve!_
+A public multiplayer demo running [Curvytron](https://github.com/Curvytron/curvytron) (MIT), a browser clone of _Achtung, die Kurve!_, on [Modal](https://modal.com).
 
-Curvytron's Node.js server keeps each room's game state in process memory, so every player in a room must reach the same container. The `ui` launcher starts one session per room and hands out an invite link of the form `<server>/?modal_session_token=<token>#/room/<name>`. Modal exchanges the query parameter for a session cookie, and the page and its WebSocket are then routed to the room's container.
+Curvytron's Node.js server keeps each room's game state in process memory, so it runs on a single always-on container (`min_containers=1`, `max_containers=1`) and everyone plays at the server's URL.
 
-- The `Curvytron` Server is built from a pinned upstream commit plus the patches in [`patches/`](patches/README.md): invite links create rooms on join, better mobile controls, client-side prediction, WebRTC game state, and offline play.
-- Each container hosts up to 8 rooms (sessions), with at most 10 containers. Routing and compute are pinned to `us-east`.
-- A room's session ends after it has been empty for 5 minutes.
+- The `Curvytron` Server is built from a pinned upstream commit plus the patches in [`patches/`](patches/README.md): room links create rooms on join, better mobile controls, client-side prediction, opponent ghosts, WebRTC game state, and offline play.
+- Routing and compute are pinned to `us-east`.
 
 ## Quickstart
 
@@ -20,7 +19,7 @@ modal setup
 ### Commands
 
 ```bash
-# create a room through the launcher and check session routing
+# check that the game is served
 uv run modal run -m src.app
 
 # serve with hot reload

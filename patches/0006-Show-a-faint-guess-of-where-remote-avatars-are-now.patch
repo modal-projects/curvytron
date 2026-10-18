@@ -1,0 +1,319 @@
+From c41c199c46209003e9bea485690516376c944263 Mon Sep 17 00:00:00 2001
+From: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>
+Date: Sun, 18 Oct 2026 18:27:39 +0000
+Subject: [PATCH 6/6] Show a faint guess of where remote avatars are now
+
+Co-Authored-By: Akshat Bubna <akshatb42@gmail.com>
+---
+ src/client/model/Avatar.js              |  11 ++
+ src/client/model/AvatarGhost.js         | 150 ++++++++++++++++++++++++
+ src/client/model/Game.js                |  47 +++++++-
+ src/client/repository/GameRepository.js |   6 +
+ 4 files changed, 212 insertions(+), 2 deletions(-)
+ create mode 100644 src/client/model/AvatarGhost.js
+
+diff --git a/src/client/model/Avatar.js b/src/client/model/Avatar.js
+index 093c3bf..607e0d4 100644
+--- a/src/client/model/Avatar.js
++++ b/src/client/model/Avatar.js
+@@ -27,10 +27,13 @@ function Avatar(player)
+     this.serverX      = 0;
+     this.serverY      = 0;
+     this.predictor    = null;
++    this.ghost        = null;
+ 
+     if (this.local) {
+         this.input     = new PlayerInput(this, player.getBinding());
+         this.predictor = new AvatarPredictor(this);
++    } else {
++        this.ghost = new AvatarGhost(this);
+     }
+ 
+     this.drawArrow();
+@@ -90,6 +93,10 @@ Avatar.prototype.setPositionFromServer = function(x, y, sequence)
+         this.predictor.onServerPosition(x, y, sequence);
+     }
+ 
++    if (this.ghost) {
++        this.ghost.onServerPosition(x, y);
++    }
++
+ 
+     this.changed = true;
+ 
+@@ -250,6 +257,10 @@ Avatar.prototype.clear = function()
+         this.predictor.reset();
+     }
+ 
++    if (this.ghost) {
++        this.ghost.reset();
++    }
++
+     this.updateWidth();
+     this.drawHead();
+ };
+diff --git a/src/client/model/AvatarGhost.js b/src/client/model/AvatarGhost.js
+new file mode 100644
+index 0000000..a5d3ae4
+--- /dev/null
++++ b/src/client/model/AvatarGhost.js
+@@ -0,0 +1,150 @@
++/**
++ * Avatar ghost
++ *
++ * Dead reckoning for a remote avatar: its last server state is advanced by the time
++ * since it arrived plus one round trip, the same horizon local avatars are predicted
++ * at, so both are drawn at the same moment of the game.
++ *
++ * @param {Avatar} avatar
++ */
++function AvatarGhost(avatar)
++{
++    this.avatar  = avatar;
++    this.game    = null;
++    this.path    = [];
++    this.server  = null;
++    this.angle   = null;
++    this.angular = 0;
++    this.turned  = false;
++}
++
++/**
++ * Simulation step (ms), the server frame duration
++ *
++ * @type {Number}
++ */
++AvatarGhost.prototype.step = 1000/60;
++
++/**
++ * Maximum extrapolation horizon (ms)
++ *
++ * @type {Number}
++ */
++AvatarGhost.prototype.maxHorizon = 300;
++
++/**
++ * Opacity of the ghost
++ *
++ * @type {Number}
++ */
++AvatarGhost.prototype.opacity = 0.35;
++
++/**
++ * Current time (ms)
++ *
++ * @return {Number}
++ */
++AvatarGhost.prototype.now = function()
++{
++    return window.performance ? window.performance.now() : new Date().getTime();
++};
++
++/**
++ * Reset (new round)
++ */
++AvatarGhost.prototype.reset = function()
++{
++    this.server  = null;
++    this.angle   = null;
++    this.angular = 0;
++    this.turned  = false;
++    this.path.length = 0;
++};
++
++/**
++ * On server angle: the server sends the angle on every frame the avatar turns
++ *
++ * @param {Number} angle
++ */
++AvatarGhost.prototype.onServerAngle = function(angle)
++{
++    var previous = this.angle !== null ? this.angle : this.avatar.angle,
++        delta    = Math.atan2(Math.sin(angle - previous), Math.cos(angle - previous));
++
++    this.angle   = angle;
++    this.turned  = true;
++    this.angular = this.avatar.directionInLoop && delta ? (delta > 0 ? 1 : -1) * this.avatar.angularVelocityBase : 0;
++};
++
++/**
++ * On server position
++ *
++ * @param {Number} x
++ * @param {Number} y
++ */
++AvatarGhost.prototype.onServerPosition = function(x, y)
++{
++    if (!this.turned) {
++        this.angular = 0;
++    }
++
++    this.turned = false;
++    this.server = {
++        x: x,
++        y: y,
++        angle: this.angle !== null ? this.angle : this.avatar.angle,
++        time: this.now()
++    };
++};
++
++/**
++ * Can a guess be made?
++ *
++ * @return {Boolean}
++ */
++AvatarGhost.prototype.isActive = function()
++{
++    return this.server !== null && this.avatar.alive;
++};
++
++/**
++ * Extrapolate the avatar to now, recording the path from its last server position
++ *
++ * @return {Object}
++ */
++AvatarGhost.prototype.predict = function()
++{
++    var avatar   = this.avatar,
++        server   = this.server,
++        delay    = this.game ? this.game.getPredictionDelay() : 0,
++        horizon  = Math.min(this.now() - server.time + delay, this.maxHorizon),
++        velocity = avatar.velocity / 1000,
++        size     = this.game ? this.game.size : null,
++        wrap     = this.game ? this.game.borderless : false,
++        x        = server.x,
++        y        = server.y,
++        angle    = server.angle,
++        time     = 0,
++        dt;
++
++    this.path.length = 0;
++    this.path.push([x, y]);
++
++    while (time < horizon) {
++        dt     = Math.min(this.step, horizon - time);
++        angle += this.angular * dt;
++        x     += Math.cos(angle) * velocity * dt;
++        y     += Math.sin(angle) * velocity * dt;
++
++        if (wrap && size && (x < 0 || x > size || y < 0 || y > size)) {
++            x = (x + size) % size;
++            y = (y + size) % size;
++            this.path.length = 0;
++        }
++
++        this.path.push([x, y]);
++        time += dt;
++    }
++
++    return {x: x, y: y, angle: angle};
++};
+diff --git a/src/client/model/Game.js b/src/client/model/Game.js
+index 3108a0c..0356604 100644
+--- a/src/client/model/Game.js
++++ b/src/client/model/Game.js
+@@ -8,6 +8,7 @@ function Game(room)
+     BaseGame.call(this, room);
+ 
+     this.animations = [];
++    this.latency    = 0;
+ 
+     this.onResize = this.onResize.bind(this);
+     this.onDie    = this.onDie.bind(this);
+@@ -22,6 +23,10 @@ function Game(room)
+         if (avatar.predictor) {
+             avatar.predictor.game = this;
+         }
++
++        if (avatar.ghost) {
++            avatar.ghost.game = this;
++        }
+     }
+ }
+ 
+@@ -212,21 +217,59 @@ Game.prototype.draw = function(step)
+ };
+ 
+ /**
+- * Draw the predicted trail of local avatars, between the last server point and the predicted head
++ * Draw the predicted trail of local avatars, between the last server point and the predicted head,
++ * and a faint guess of where remote avatars are at the same moment
+  */
+ Game.prototype.drawPredictions = function()
+ {
++    var context = this.prediction.context;
++
+     this.prediction.clear();
+ 
+-    for (var avatar, i = this.avatars.items.length - 1; i >= 0; i--) {
++    for (var avatar, state, i = this.avatars.items.length - 1; i >= 0; i--) {
+         avatar = this.avatars.items[i];
+ 
+         if (this.frame && avatar.predictor && avatar.alive && avatar.printing && avatar.predictor.isActive()) {
+             this.prediction.drawLineScaled(avatar.predictor.path, avatar.width, avatar.color, 'round');
+         }
++
++        if (this.frame && avatar.ghost && avatar.present && avatar.ghost.isActive()) {
++            state = avatar.ghost.predict();
++            context.globalAlpha = avatar.ghost.opacity;
++
++            if (avatar.printing) {
++                this.prediction.drawLineScaled(avatar.ghost.path, avatar.width, avatar.color, 'round');
++            }
++
++            this.prediction.drawCircle(
++                state.x * this.prediction.scale,
++                state.y * this.prediction.scale,
++                avatar.radius * this.prediction.scale,
++                avatar.color
++            );
++            context.globalAlpha = 1;
++        }
+     }
+ };
+ 
++/**
++ * Round trip delay (ms) local avatars are predicted ahead by
++ *
++ * @return {Number}
++ */
++Game.prototype.getPredictionDelay = function()
++{
++    for (var avatar, i = this.avatars.items.length - 1; i >= 0; i--) {
++        avatar = this.avatars.items[i];
++
++        if (avatar.predictor && avatar.predictor.delay) {
++            return avatar.predictor.delay;
++        }
++    }
++
++    return this.latency;
++};
++
+ /**
+  * Draw tail
+  *
+diff --git a/src/client/repository/GameRepository.js b/src/client/repository/GameRepository.js
+index 7c42613..61ed845 100644
+--- a/src/client/repository/GameRepository.js
++++ b/src/client/repository/GameRepository.js
+@@ -233,6 +233,10 @@ GameRepository.prototype.onAngle = function(e)
+             avatar.predictor.onServerAngle(angle);
+         }
+ 
++        if (avatar.ghost) {
++            avatar.ghost.onServerAngle(angle);
++        }
++
+         avatar.setAngle(angle);
+     }
+ };
+@@ -244,6 +248,8 @@ GameRepository.prototype.onAngle = function(e)
+  */
+ GameRepository.prototype.onLatency = function(e)
+ {
++    this.game.latency = e.detail;
++
+     for (var avatar, i = this.game.avatars.items.length - 1; i >= 0; i--) {
+         avatar = this.game.avatars.items[i];
+ 
