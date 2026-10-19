@@ -13,8 +13,8 @@ parameter for a session cookie, which Curvytron's page and WebSocket then send, 
 every player in a room reaches the same container. A session ends once its room has
 been empty for `ROOM_IDLE_TIMEOUT`.
 
-The launcher also serves Curvytron's homepage without starting a session. Its lobby
-creates rooms through `<launcher>/room/<name>`.
+`<launcher>/` opens Curvytron's lobby on one shared lobby session, stored in the same
+Dict, and the lobby creates rooms through `<launcher>/room/<name>`.
 
 Check routing with `modal run -m src.app`.
 """
@@ -24,7 +24,7 @@ import modal
 app = modal.App("curvytron")
 
 CURVYTRON_REPO = "https://github.com/KartikYZ/curvytron"
-CURVYTRON_COMMIT = "690d8dafc235babc71803cb985cee5ec2c11bf65"
+CURVYTRON_COMMIT = "5647a062a137e82221a2448a3a6120eab9589dc9"
 CURVYTRON_DIR = "/curvytron"
 
 image = (
@@ -46,6 +46,7 @@ REGION = "us-east"
 ROOM_IDLE_TIMEOUT = 5 * MINUTES
 ROOM_NAME_MAX_LENGTH = 25
 URI_COMPONENT_SAFE = "!'()*~"
+LOBBY_KEY = ("lobby",)
 
 
 @app.server(
@@ -70,7 +71,7 @@ class Curvytron:
         self.process = subprocess.Popen(["npm", "start"], cwd=CURVYTRON_DIR, env=env)
 
 
-launcher_image = image.uv_pip_install("fastapi[standard]==0.116.1")
+launcher_image = modal.Image.debian_slim(python_version="3.12").uv_pip_install("fastapi[standard]==0.116.1")
 
 rooms = modal.Dict.from_name("curvytron-rooms", create_if_missing=True)
 
@@ -79,67 +80,63 @@ rooms = modal.Dict.from_name("curvytron-rooms", create_if_missing=True)
 @modal.concurrent(max_inputs=100)
 @modal.asgi_app()
 def ui():
-    import json
     import secrets
+    from collections.abc import Awaitable, Callable
     from urllib.parse import quote
 
     import httpx
     from fastapi import FastAPI, HTTPException
-    from fastapi.responses import RedirectResponse, Response
-    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import RedirectResponse
 
     web_app = FastAPI()
 
-    async def open_room(server_url: str, token: str, room: str) -> bool:
+    async def request(method: str, url: str, token: str) -> bool:
         async with httpx.AsyncClient() as client:
-            resp = await client.put(
-                f"{server_url}/rooms/{quote(room, safe='')}",
-                headers={"Modal-Authorization": f"Bearer {token}"},
-            )
+            resp = await client.request(method, url, headers={"Modal-Authorization": f"Bearer {token}"})
         if resp.status_code in (401, 404, 502):
             return False
         resp.raise_for_status()
         return True
 
-    async def session_for(room: str, server_url: str) -> str | None:
-        token = await rooms.get.aio(room)
-        if token is not None and await open_room(server_url, token, room):
+    async def session_for(key, ready: Callable[[str], Awaitable[bool]]) -> str | None:
+        token = await rooms.get.aio(key)
+        if token is not None and await ready(token):
             return token
         if token is not None:
-            await rooms.pop.aio(room, None)
+            await rooms.pop.aio(key, None)
         session = await Curvytron.sessions.start.aio(idle_timeout=ROOM_IDLE_TIMEOUT)
-        if not await rooms.put.aio(room, session.token, skip_if_exists=True):
+        if not await rooms.put.aio(key, session.token, skip_if_exists=True):
             await Curvytron.sessions.terminate.aio(session.token)
-            return await session_for(room, server_url)
-        if await open_room(server_url, session.token, room):
+            return await session_for(key, ready)
+        if await ready(session.token):
             return session.token
         return None
 
-    @web_app.get("/modal.js")
-    async def modal_config():
-        return Response(
-            f"window.CURVYTRON_LAUNCHER_URL = {json.dumps(ui.get_web_url())};",
-            media_type="application/javascript",
-            headers={"Cache-Control": "no-store"},
-        )
+    @web_app.get("/")
+    async def lobby():
+        server_url = await Curvytron.get_url.aio()
+        token = await session_for(LOBBY_KEY, lambda token: request("GET", f"{server_url}/modal.js", token))
+        if token is None:
+            raise HTTPException(status_code=503, detail="Could not open the lobby")
+        return RedirectResponse(f"{server_url}/?modal_session_token={token}#/", status_code=303)
 
     @web_app.get("/room/{room:path}")
     async def join_room(room: str):
         room = room[:ROOM_NAME_MAX_LENGTH].strip() or f"room-{secrets.token_hex(3)}"
         server_url = await Curvytron.get_url.aio()
-        token = await session_for(room, server_url)
+        room_url = f"{server_url}/rooms/{quote(room, safe='')}"
+        token = await session_for(room, lambda token: request("PUT", room_url, token))
         if token is None:
             raise HTTPException(status_code=503, detail="Could not open this room")
         fragment = f"/room/{quote(room, safe=URI_COMPONENT_SAFE)}"
         return RedirectResponse(f"{server_url}/?modal_session_token={token}#{fragment}", status_code=303)
 
-    web_app.mount("/", StaticFiles(directory=f"{CURVYTRON_DIR}/web", html=True))
     return web_app
 
 
 @app.local_entrypoint()
 def test():
-    """Load the launcher homepage, join rooms through it, and check joins share a session that rooms outlive."""
+    """Open the lobby and rooms through the launcher, and check joins share a session that rooms outlive."""
     import secrets
     import urllib.error
     import urllib.request
@@ -164,11 +161,10 @@ def test():
         assert location.fragment == f"/room/{quote(room, safe=URI_COMPONENT_SAFE)}", location.fragment
         return f"{location.scheme}://{location.netloc}", parse_qs(location.query)["modal_session_token"][0]
 
-    with urllib.request.urlopen(ui.get_web_url()) as resp:
-        assert 'src="modal.js"' in resp.read().decode()
-    with urllib.request.urlopen(f"{ui.get_web_url()}/modal.js") as resp:
-        assert ui.get_web_url() in resp.read().decode()
-    print("The launcher served Curvytron's homepage, pointing at itself")
+    lobby = urlparse(redirect_location(ui.get_web_url()))
+    assert lobby.fragment == "/", lobby.fragment
+    assert redirect_location(ui.get_web_url()) == lobby.geturl(), "a second lobby visit got a different session"
+    print("Both lobby visits got the same session")
 
     room = f"test-{secrets.token_hex(3)}"
     server_url, token = join(room)
