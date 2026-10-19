@@ -127,9 +127,9 @@ def build_api(
         for _ in range(3):
             entry = await rooms.get.aio(name)
             if entry is not None:
-                token = entry["token"] if isinstance(entry, dict) else entry
+                token = entry["token"]
                 if await open_room(server_url, token, name):
-                    return entry if isinstance(entry, dict) else {"token": token}
+                    return entry
                 await rooms.pop.aio(name, None)
 
             session = await server.sessions.start.aio(idle_timeout=ROOM_IDLE_TIMEOUT)
@@ -138,9 +138,9 @@ def build_api(
                 await server.sessions.terminate.aio(session.token)
                 winner = await rooms.get.aio(name)
                 if winner is not None:
-                    token = winner["token"] if isinstance(winner, dict) else winner
+                    token = winner["token"]
                     if await open_room(server_url, token, name):
-                        return winner if isinstance(winner, dict) else {"token": token}
+                        return winner
                     await rooms.pop.aio(name, None)
                 continue
 
@@ -166,7 +166,7 @@ def build_api(
             async with httpx.AsyncClient(timeout=10) as client:
 
                 async def get_room(name: str, entry: Any) -> dict[str, Any] | None:
-                    token = entry["token"] if isinstance(entry, dict) else entry
+                    token = entry["token"]
                     try:
                         response = await client.get(
                             f"{server_url}/rooms/{quote(name, safe='')}",
@@ -177,6 +177,7 @@ def build_api(
                         return None
 
                     if response.status_code == 404:
+                        await rooms.pop.aio(name, None)
                         return None
                     if response.status_code != 200:
                         await rooms.pop.aio(name, None)

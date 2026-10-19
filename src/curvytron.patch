@@ -195,6 +195,15 @@ index d4c645b..c916bea 100644
  
 +        <script src="modal.js"></script>
          <script src="js/dependencies.js"></script>
+diff --git a/src/server/controller/RoomsController.js b/src/server/controller/RoomsController.js
+index a2f9417..3eab49c 100644
+--- a/src/server/controller/RoomsController.js
++++ b/src/server/controller/RoomsController.js
+@@ -130,3 +130,3 @@ RoomsController.prototype.onJoinRoom = function(client, data, callback)
+ {
+-    var room = this.repository.get(data.name);
++    var room = this.repository.get(data.name) || this.repository.create(data.name);
+ 
 diff --git a/src/server/core/Server.js b/src/server/core/Server.js
 index 1b7ff44..f0260d0 100644
 --- a/src/server/core/Server.js
