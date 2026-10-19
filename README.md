@@ -2,11 +2,12 @@
 
 A public multiplayer demo of [Modal Sticky Sessions](https://modal.com/docs/guide/sticky-sessions), running [Curvytron](https://github.com/Curvytron/curvytron) (MIT), a browser clone of _Achtung, die Kurve!_
 
-Curvytron's Node.js server keeps each room's game state in process memory, so every player in a room must reach the same container. The `ui` launcher starts one session per room and hands out an invite link of the form `<server>/?modal_session_token=<token>#/room/<name>`. Modal exchanges the query parameter for a session cookie, and the page and its WebSocket are then routed to the room's container.
+Curvytron's Node.js server keeps each room's game state in process memory, so every player in a room must reach the same container. Rooms are shared as `<launcher>/room/<name>` links, and players play in Curvytron's own UI.
 
+- The `ui` launcher has no page of its own. It keeps a room-to-session mapping in the `curvytron-rooms` Modal Dict, starts a session the first time a room is joined (or after its session has ended), and redirects to `<server>/?modal_session_token=<token>#/room/<name>`. Modal exchanges the query parameter for a session cookie, and Curvytron's page and WebSocket are then routed to the room's container. `<launcher>/` redirects to a new room.
 - The `Curvytron` Server is built from a pinned upstream commit, with a one-line patch so that joining an unknown room creates it.
-- Each container hosts up to 8 rooms (sessions), with at most 10 containers. Routing and compute are pinned to `us-east`.
-- A room's session ends after it has been empty for 5 minutes.
+- Each container hosts up to 10 rooms (sessions), with at most 2 containers. One container is always running, plus one buffer container. Routing and compute are pinned to `us-east`.
+- A room's session ends after it has been empty for 5 minutes. Rooms created from Curvytron's lobby live in the creator's session, so they can't be shared through a launcher link.
 
 ## Quickstart
 
@@ -20,7 +21,7 @@ modal setup
 ### Commands
 
 ```bash
-# create a room through the launcher and check session routing
+# join a room through the launcher and check session routing
 uv run modal run -m src.app
 
 # serve with hot reload

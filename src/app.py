@@ -3,11 +3,13 @@
 Runs Curvytron (https://github.com/Curvytron/curvytron, MIT), a browser clone of
 Achtung, die Kurve! using Modal Sticky Sessions.
 
-The `ui` launcher starts a session per room and shows an invite link of the form
+Rooms are shared as `<launcher>/room/<name>` links. The `ui` launcher keeps a
+room-to-session mapping in a Modal Dict: it starts a session the first time a room is
+joined, or after the room's session has ended, and redirects every player to
 `<server>/?modal_session_token=<token>#/room/<name>`. Modal exchanges the query
-parameter for a session cookie, which the page and its WebSocket then send. Once a
-room has been empty for `ROOM_IDLE_TIMEOUT`, its session ends and the link stops
-working.
+parameter for a session cookie, which Curvytron's page and WebSocket then send, so
+every player in a room reaches the same container. `<launcher>/` redirects to a new
+room. A session ends once its room has been empty for `ROOM_IDLE_TIMEOUT`.
 
 Check routing with `modal run -m src.app`.
 """
@@ -41,10 +43,11 @@ image = (
 
 MINUTES = 60
 PORT = 8020
-ROOMS_PER_CONTAINER = 8
+ROOMS_PER_CONTAINER = 10
 MAX_CONTAINERS = 2
 REGION = "us-east"
 ROOM_IDLE_TIMEOUT = 5 * MINUTES
+ROOM_NAME_PATTERN = r"^[A-Za-z0-9_-]{1,32}$"
 
 
 @app.server(
@@ -52,6 +55,8 @@ ROOM_IDLE_TIMEOUT = 5 * MINUTES
     port=PORT,
     max_concurrency=ROOMS_PER_CONTAINER,
     max_containers=MAX_CONTAINERS,
+    min_containers=1,
+    buffer_containers=1,
     routing_region=REGION,
     compute_region=REGION,
     startup_timeout=1 * MINUTES,
@@ -67,90 +72,87 @@ class Curvytron:
 
 launcher_image = modal.Image.debian_slim(python_version="3.12").uv_pip_install("fastapi[standard]==0.116.1")
 
+rooms = modal.Dict.from_name("curvytron-rooms", create_if_missing=True)
+
 
 @app.function(image=launcher_image)
 @modal.concurrent(max_inputs=100)
 @modal.asgi_app()
 def ui():
-    import html
     import secrets
 
-    from fastapi import FastAPI
-    from fastapi.responses import HTMLResponse
+    import httpx
+    from fastapi import FastAPI, HTTPException, Path
+    from fastapi.responses import RedirectResponse
 
     web_app = FastAPI()
 
-    @web_app.get("/")
-    async def index():
-        return HTMLResponse(PAGE_HTML.format(body=CREATE_ROOM_HTML))
+    async def is_live(server_url: str, token: str) -> bool:
+        async with httpx.AsyncClient() as client:
+            resp = await client.head(server_url, headers={"Modal-Authorization": f"Bearer {token}"})
+        return resp.status_code not in (401, 404)
 
-    @web_app.post("/new")
-    async def new_room():
+    async def session_for(room: str, server_url: str) -> str:
+        token = await rooms.get.aio(room)
+        if token is not None and await is_live(server_url, token):
+            return token
+        if token is not None:
+            await rooms.pop.aio(room, None)
         session = await Curvytron.sessions.start.aio(idle_timeout=ROOM_IDLE_TIMEOUT)
+        if await rooms.put.aio(room, session.token, skip_if_exists=True):
+            return session.token
+        await Curvytron.sessions.terminate.aio(session.token)
+        return await rooms.get.aio(room)
+
+    @web_app.get("/")
+    async def new_room():
+        return RedirectResponse(f"room/room-{secrets.token_hex(3)}", status_code=303)
+
+    @web_app.get("/room/{room}")
+    async def join_room(room: str = Path(pattern=ROOM_NAME_PATTERN)):
         server_url = await Curvytron.get_url.aio()
-        # Rooms on a container share one Curvytron process, so names must not collide.
-        room = f"room-{secrets.token_hex(3)}"
-        invite = f"{server_url}/?modal_session_token={session.token}#/room/{room}"
-        body = INVITE_HTML.format(invite=html.escape(invite))
-        return HTMLResponse(PAGE_HTML.format(body=body))
+        token = await session_for(room, server_url)
+        if token is None:
+            raise HTTPException(status_code=503, detail="Could not start a session for this room")
+        return RedirectResponse(f"{server_url}/?modal_session_token={token}#/room/{room}", status_code=303)
 
     return web_app
 
 
-PAGE_HTML = """<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Curvytron on Modal</title>
-  </head>
-  <body style="font-family: sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;">
-    <h1>Curvytron on Modal</h1>
-    {body}
-  </body>
-</html>
-"""
-
-CREATE_ROOM_HTML = """
-    <p>Create a room and share its invite link with your friends.</p>
-    <form method="post" action="new">
-      <button type="submit">Create a room</button>
-    </form>
-"""
-
-INVITE_HTML = """
-    <p>Your room is ready. Send this invite link to your friends,
-       then join using the same link.</p>
-    <p><input id="invite" value="{invite}" readonly style="width: 100%; box-sizing: border-box;"></p>
-    <p>
-      <button id="copy" type="button">Copy invite link</button>
-      <a href="{invite}">Play</a>
-    </p>
-    <script>
-      const copy = document.getElementById("copy");
-      copy.addEventListener("click", async () => {{
-        await navigator.clipboard.writeText(document.getElementById("invite").value);
-        copy.textContent = "Copied!";
-      }});
-    </script>
-"""
-
-
 @app.local_entrypoint()
 def test():
-    """Create a room, load it with the invite link's token, and check that tokenless requests are refused."""
-    import html
-    import re
+    """Join a room twice, check both joins share a session, and check that a room outlives its ended session."""
+    import secrets
     import urllib.error
     import urllib.request
     from urllib.parse import parse_qs, urlparse
 
-    with urllib.request.urlopen(urllib.request.Request(f"{ui.get_web_url()}/new", data=b"")) as resp:
-        page = resp.read().decode()
-    invite = urlparse(html.unescape(re.search(r'href="([^"]+)"', page).group(1)))
-    token = parse_qs(invite.query)["modal_session_token"][0]
-    server_url = f"{invite.scheme}://{invite.netloc}"
-    print(f"Created room {invite.fragment.removeprefix('/room/')!r}")
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args, **kwargs):
+            return None
+
+    opener = urllib.request.build_opener(NoRedirect)
+
+    def redirect_location(url: str) -> str:
+        try:
+            opener.open(url)
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 303, f"expected a 303 from {url}, got {exc.code}"
+            return exc.headers["Location"]
+        raise AssertionError(f"{url} did not redirect")
+
+    def join(room: str) -> tuple[str, str]:
+        location = urlparse(redirect_location(f"{ui.get_web_url()}/room/{room}"))
+        assert location.fragment == f"/room/{room}", location.fragment
+        return f"{location.scheme}://{location.netloc}", parse_qs(location.query)["modal_session_token"][0]
+
+    assert redirect_location(ui.get_web_url()).startswith("room/room-")
+    print("The launcher redirected to a new room")
+
+    room = f"test-{secrets.token_hex(3)}"
+    server_url, token = join(room)
+    assert join(room) == (server_url, token), "a second join got a different session"
+    print(f"Both joins of room {room!r} got the same session")
 
     request = urllib.request.Request(server_url, headers={"Modal-Authorization": f"Bearer {token}"})
     with urllib.request.urlopen(request) as resp:
@@ -163,3 +165,15 @@ def test():
     except urllib.error.HTTPError as exc:
         assert exc.code == 401, f"expected 401 without a session token, got {exc.code}"
     print("Curvytron rejected a request without a session token")
+
+    Curvytron.sessions.terminate(token)
+    _, new_token = join(room)
+    assert new_token != token, "joining after the session ended reused its token"
+    print("Joining after the session ended started a new session")
+
+    try:
+        opener.open(f"{ui.get_web_url()}/room/not%20a%20room")
+        raise AssertionError("Launcher accepted an invalid room name")
+    except urllib.error.HTTPError as exc:
+        assert exc.code == 422, f"expected 422 for an invalid room name, got {exc.code}"
+    print("The launcher rejected an invalid room name")
