@@ -1,13 +1,13 @@
 """Curvytron multiplayer game demo, hosted on Modal with Sticky Sessions.
 
 Runs a fork of Curvytron (https://github.com/Curvytron/curvytron, MIT), a browser
-clone of Achtung, die Kurve!, that routes room creation and invite links through a
-Sticky Sessions launcher (https://github.com/KartikYZ/curvytron).
+clone of Achtung, die Kurve!, whose lobby creates rooms through a Sticky Sessions
+launcher (https://github.com/KartikYZ/curvytron).
 
-Rooms are shared as `<launcher>/room/<name>` links, which Curvytron's lobby and room
-pages also use. The `ui` launcher keeps a room-to-session mapping in a Modal Dict: it
-starts a session the first time a room is joined, or after the room's session has
-ended, opens the room on that session's container, and redirects every player to
+Rooms are shared as `<launcher>/room/<name>` links. The `ui` launcher keeps a
+room-to-session mapping in a Modal Dict: it starts a session the first time a room is
+joined, or after the room's session has ended, opens the room on that session's
+container, and redirects every player to
 `<server>/?modal_session_token=<token>#/room/<name>`. Modal exchanges the query
 parameter for a session cookie, which Curvytron's page and WebSocket then send, so
 every player in a room reaches the same container. `<launcher>/` redirects to a new
@@ -21,7 +21,7 @@ import modal
 app = modal.App("curvytron")
 
 CURVYTRON_REPO = "https://github.com/KartikYZ/curvytron"
-CURVYTRON_COMMIT = "613d1169820c3a51a8b9e29dab5a78281db99614"
+CURVYTRON_COMMIT = "4382557224a7b70150e8f1fd80a69611201933cf"
 CURVYTRON_DIR = "/curvytron"
 
 image = (
@@ -91,7 +91,7 @@ def ui():
                 f"{server_url}/rooms/{quote(room, safe='')}",
                 headers={"Modal-Authorization": f"Bearer {token}"},
             )
-        if resp.status_code in (401, 404):
+        if resp.status_code in (401, 404, 502):
             return False
         resp.raise_for_status()
         return True

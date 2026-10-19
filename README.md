@@ -2,7 +2,7 @@
 
 A public multiplayer demo of [Modal Sticky Sessions](https://modal.com/docs/guide/sticky-sessions), running a [fork](https://github.com/KartikYZ/curvytron) of [Curvytron](https://github.com/Curvytron/curvytron) (MIT), a browser clone of _Achtung, die Kurve!_
 
-Curvytron's Node.js server keeps each room's game state in process memory, so every player in a room must reach the same container. Rooms are shared as `<launcher>/room/<name>` links, and players play in Curvytron's own UI. The fork's lobby creates rooms through the launcher, and its room page shows the launcher link as the invite link.
+Curvytron's Node.js server keeps each room's game state in process memory, so every player in a room must reach the same container. Rooms are shared as `<launcher>/room/<name>` links, and players play in Curvytron's own UI. The fork's lobby creates rooms through the launcher.
 
 - The `ui` launcher has no page of its own. It keeps a room-to-session mapping in the `curvytron-rooms` Modal Dict, starts a session the first time a room is joined (or after its session has ended), opens the room on that session's container with the fork's `PUT /rooms/:name`, and redirects to `<server>/?modal_session_token=<token>#/room/<name>`. Modal exchanges the query parameter for a session cookie, and Curvytron's page and WebSocket are then routed to the room's container. `<launcher>/` redirects to a new room.
 - The `Curvytron` Server is built from a pinned commit of the fork, with `CURVYTRON_LAUNCHER_URL` set to the launcher. Opening a room that doesn't exist on the current container, such as a server URL copied from another browser, lands in Curvytron's lobby.
