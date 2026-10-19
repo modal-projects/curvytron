@@ -218,6 +218,8 @@ p { margin: 0 0 10px; }
 }
 .invite .btn { margin-right: -10px; border-left: 10px solid var(--bg); font-size: 18px; }
 .invite .btn span { padding: 14px 30px 14px 22px; }
+.invite .btn:focus-visible { outline: none; }
+.invite:has(.btn:focus-visible) { outline: 3px solid var(--text-strong); outline-offset: 4px; }
 .room { color: var(--text-strong); font-weight: 700; }
 .loader { display: none; margin: 24px 0; }
 .loading .create { display: none; }
