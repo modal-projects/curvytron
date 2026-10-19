@@ -1,0 +1,269 @@
+diff --git a/src/client/controller/CurvytronController.js b/src/client/controller/CurvytronController.js
+index 3d661d9..6c89e13 100644
+--- a/src/client/controller/CurvytronController.js
++++ b/src/client/controller/CurvytronController.js
+@@ -26,3 +26,3 @@ function CurvytronController($scope, $window, $location, profile, analyser, watc
+     // Hydrate scope
+-    this.$scope.status  = 'connecting';
++    this.$scope.status  = window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby ? 'online' : 'connecting';
+     this.$scope.reload  = this.reload;
+@@ -45,3 +45,3 @@ CurvytronController.prototype.onConnect = function(e)
+     this.$scope.status  = 'online';
+-    this.$scope.profile = true;
++    this.$scope.profile = !(window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby);
+     this.digestScope();
+diff --git a/src/client/controller/RoomController.js b/src/client/controller/RoomController.js
+index 67236b3..bc18ae5 100644
+--- a/src/client/controller/RoomController.js
++++ b/src/client/controller/RoomController.js
+@@ -18,2 +18,14 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
+ 
++    if (window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby) {
++        var url = 'room/' + encodeURIComponent(decodeURIComponent($routeParams.name)),
++            password = $location.search().password;
++
++        if (password) {
++            url += '?password=' + encodeURIComponent(password);
++        }
++
++        window.location.assign(url);
++        return;
++    }
++
+     var search = $location.search();
+diff --git a/src/client/controller/RoomsController.js b/src/client/controller/RoomsController.js
+index 266f2c9..cfc77ba 100644
+--- a/src/client/controller/RoomsController.js
++++ b/src/client/controller/RoomsController.js
+@@ -13,2 +13,7 @@ function RoomsController($scope, $location, client)
+ 
++    if (window.CURVYTRON_LOBBY && !window.CURVYTRON_LOBBY.isLobby && window.CURVYTRON_LOBBY.url) {
++        window.location.replace(window.CURVYTRON_LOBBY.url);
++        return;
++    }
++
+     this.$location  = $location;
+@@ -34,3 +39,3 @@ function RoomsController($scope, $location, client)
+     this.$scope.roomName        = '';
+-    this.$scope.$parent.profile = true;
++    this.$scope.$parent.profile = !(window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby);
+ 
+@@ -75,2 +80,10 @@ RoomsController.prototype.createRoom = function(e)
+ {
++    if (window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby) {
++        var name = (this.$scope.roomName || '').substr(0, Room.prototype.maxLength).trim();
++
++        window.location.assign(name ? 'room/' + encodeURIComponent(name) : 'room/');
++
++        return;
++    }
++
+     this.repository.create(this.$scope.roomName, this.onCreateRoom);
+@@ -99,2 +112,16 @@ RoomsController.prototype.joinRoom = function(room)
+ {
++    if (window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby) {
++        if (room.open || (room.password && room.password.match(new RegExp('[0-9]{4}')))) {
++            var url = 'room/' + encodeURIComponent(room.name);
++
++            if (!room.open) {
++                url += '?password=' + encodeURIComponent(room.password);
++            }
++
++            window.location.assign(url);
++        }
++
++        return;
++    }
++
+     if (room.open) {
+diff --git a/src/client/core/SocketClient.js b/src/client/core/SocketClient.js
+index 02c8b56..8a78136 100644
+--- a/src/client/core/SocketClient.js
++++ b/src/client/core/SocketClient.js
+@@ -12,2 +12,13 @@ function SocketClient()
+ 
++    if (window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby) {
++        BaseSocketClient.call(this, {
++            addEventListener: function () {},
++            removeEventListener: function () {},
++            send: function () {}
++        });
++        this.id = null;
++
++        return;
++    }
++
+     var Socket = window.MozWebSocket || window.WebSocket;
+diff --git a/src/client/repository/RoomsRepository.js b/src/client/repository/RoomsRepository.js
+index 77e7122..d8044b0 100644
+--- a/src/client/repository/RoomsRepository.js
++++ b/src/client/repository/RoomsRepository.js
+@@ -11,2 +11,4 @@ function RoomsRepository(client)
+     this.rooms  = new Collection([], 'name');
++    this.polling = false;
++    this.poll     = null;
+ 
+@@ -18,2 +20,3 @@ function RoomsRepository(client)
+     this.onRoomConfigOpen = this.onRoomConfigOpen.bind(this);
++    this.pollRooms        = this.pollRooms.bind(this);
+ }
+@@ -179,2 +182,58 @@ RoomsRepository.prototype.onRoomGame = function(e)
+ 
++/**
++ * Poll the lobby for rooms and emit changes
++ */
++RoomsRepository.prototype.pollRooms = function()
++{
++    var repository = this,
++        request = new XMLHttpRequest();
++
++    request.open('GET', 'rooms', true);
++    request.onload = function()
++    {
++        if (!repository.polling || request.status !== 200) {
++            return;
++        }
++
++        var rooms;
++
++        try {
++            rooms = JSON.parse(request.responseText);
++        } catch (error) {
++            return;
++        }
++
++        var previous = repository.rooms.items.slice();
++
++        for (var i = 0; i < previous.length; i++) {
++            if (!rooms.some(function (room) { return room.name === previous[i].name; })) {
++                repository.onRoomClose({detail: {name: previous[i].name}});
++            }
++        }
++
++        for (var j = 0; j < rooms.length; j++) {
++            var room = rooms[j],
++                existing = repository.get(room.name);
++
++            if (!existing) {
++                repository.onRoomOpen({detail: room});
++                continue;
++            }
++
++            if (existing.players !== room.players) {
++                repository.onRoomPlayers({detail: {name: room.name, players: room.players}});
++            }
++
++            if (existing.game !== room.game) {
++                repository.onRoomGame({detail: {name: room.name, game: room.game}});
++            }
++
++            if (existing.open !== room.open) {
++                repository.onRoomConfigOpen({detail: {name: room.name, open: room.open}});
++            }
++        }
++    };
++    request.send();
++};
++
+ /**
+@@ -184,2 +243,11 @@ RoomsRepository.prototype.start = function()
+ {
++    if (window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby) {
++        this.attachEvents();
++        this.polling = true;
++        this.pollRooms();
++        this.poll = setInterval(this.pollRooms, 2000);
++
++        return;
++    }
++
+     if (this.client.connected) {
+@@ -197,2 +265,8 @@ RoomsRepository.prototype.stop = function()
+ {
++    this.polling = false;
++    if (this.poll) {
++        clearInterval(this.poll);
++        this.poll = null;
++    }
++
+     this.detachEvents();
+diff --git a/src/client/views/index.html b/src/client/views/index.html
+index d4c645b..c916bea 100644
+--- a/src/client/views/index.html
++++ b/src/client/views/index.html
+@@ -78,2 +78,3 @@
+ 
++        <script src="modal.js"></script>
+         <script src="js/dependencies.js"></script>
+diff --git a/src/server/core/Server.js b/src/server/core/Server.js
+index 1b7ff44..f0260d0 100644
+--- a/src/server/core/Server.js
++++ b/src/server/core/Server.js
+@@ -19,3 +19,11 @@ function Server(config)
+     this.onError               = this.onError.bind(this);
++    this.serveModalConfig      = this.serveModalConfig.bind(this);
++    this.getRoom               = this.getRoom.bind(this);
++    this.ensureRoom            = this.ensureRoom.bind(this);
+ 
++    this.lobbyUrl = process.env.LOBBY_URL || null;
++
++    this.app.get('/modal.js', this.serveModalConfig);
++    this.app.get('/rooms/:name', this.getRoom);
++    this.app.put('/rooms/:name', this.ensureRoom);
+     this.app.use(express['static']('web'));
+@@ -51,2 +59,55 @@ Server.prototype.authorizationHandler = function(request, socket, head)
+ 
++/**
++ * Serve the Modal lobby URL to the client
++ *
++ * @param {Object} request
++ * @param {Object} response
++ */
++Server.prototype.serveModalConfig = function(request, response)
++{
++    var config = this.lobbyUrl ? {isLobby: false, url: this.lobbyUrl} : null;
++
++    response.set('Cache-Control', 'no-store');
++    response.type('application/javascript');
++    response.send('window.CURVYTRON_LOBBY = ' + JSON.stringify(config) + ';');
++};
++
++/**
++ * Get a room's public state
++ *
++ * @param {Object} request
++ * @param {Object} response
++ */
++Server.prototype.getRoom = function(request, response)
++{
++    var room = this.roomRepository.get(request.params.name);
++
++    if (!room) {
++        return response.status(404).end();
++    }
++
++    response.json(room.serialize(false));
++};
++
++/**
++ * Create a room unless it already exists
++ *
++ * @param {Object} request
++ * @param {Object} response
++ */
++Server.prototype.ensureRoom = function(request, response)
++{
++    var name = request.params.name.substr(0, BaseRoom.prototype.maxLength).trim();
++
++    if (!name) {
++        return response.status(400).end();
++    }
++
++    if (this.roomRepository.get(name)) {
++        return response.status(200).end();
++    }
++
++    response.status(this.roomRepository.create(name) ? 201 : 409).end();
++};
++
+ /**
