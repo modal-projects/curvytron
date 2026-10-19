@@ -65,7 +65,19 @@ class Curvytron:
         self.process = subprocess.Popen(["npm", "start"], cwd=CURVYTRON_DIR)
 
 
-launcher_image = modal.Image.debian_slim(python_version="3.12").uv_pip_install("fastapi[standard]==0.116.1")
+ASSETS_DIR = "/assets"
+CURVYTRON_ASSETS_URL = f"https://raw.githubusercontent.com/Curvytron/curvytron/{CURVYTRON_COMMIT}/web/images"
+
+launcher_image = (
+    modal.Image.debian_slim(python_version="3.12")
+    .apt_install("curl")
+    .uv_pip_install("fastapi[standard]==0.116.1")
+    .run_commands(
+        f"mkdir -p {ASSETS_DIR}",
+        f"curl -fsSL {CURVYTRON_ASSETS_URL}/logo.svg -o {ASSETS_DIR}/logo.svg",
+        f"curl -fsSL {CURVYTRON_ASSETS_URL}/favicon.png -o {ASSETS_DIR}/favicon.png",
+    )
+)
 
 
 @app.function(image=launcher_image)
@@ -76,13 +88,24 @@ def ui():
     import secrets
 
     from fastapi import FastAPI
-    from fastapi.responses import HTMLResponse
+    from fastapi.responses import FileResponse, HTMLResponse
 
     web_app = FastAPI()
 
+    def page(body: str) -> HTMLResponse:
+        return HTMLResponse(PAGE_HTML.format(style=PAGE_CSS, body=body))
+
     @web_app.get("/")
     async def index():
-        return HTMLResponse(PAGE_HTML.format(body=CREATE_ROOM_HTML))
+        return page(CREATE_ROOM_HTML)
+
+    @web_app.get("/logo.svg")
+    async def logo():
+        return FileResponse(f"{ASSETS_DIR}/logo.svg", media_type="image/svg+xml")
+
+    @web_app.get("/favicon.png")
+    async def favicon():
+        return FileResponse(f"{ASSETS_DIR}/favicon.png", media_type="image/png")
 
     @web_app.post("/new")
     async def new_room():
@@ -91,46 +114,198 @@ def ui():
         # Rooms on a container share one Curvytron process, so names must not collide.
         room = f"room-{secrets.token_hex(3)}"
         invite = f"{server_url}/?modal_session_token={session.token}#/room/{room}"
-        body = INVITE_HTML.format(invite=html.escape(invite))
-        return HTMLResponse(PAGE_HTML.format(body=body))
+        body = INVITE_HTML.format(invite=html.escape(invite), room=room, idle_minutes=ROOM_IDLE_TIMEOUT // MINUTES)
+        return page(body)
 
     return web_app
 
 
 PAGE_HTML = """<!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Curvytron on Modal</title>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap">
+    <style>{style}</style>
   </head>
-  <body style="font-family: sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem;">
-    <h1>Curvytron on Modal</h1>
-    {body}
+  <body>
+    <header>
+      <a class="logo" href="./">
+        <img src="logo.svg" alt="">
+        <span class="brand">Curvytron</span>
+      </a>
+      <p class="tagline">Multiplayer on Modal</p>
+    </header>
+    <main>{body}</main>
+    <footer>
+      <a href="https://github.com/Curvytron/curvytron">Curvytron</a> by Gameo, MIT licensed.
+      Hosted on Modal with <a href="https://modal.com/docs/guide/sticky-sessions">Sticky Sessions</a>.
+    </footer>
   </body>
 </html>
 """
 
+PAGE_CSS = """
+:root {
+  color-scheme: light;
+  --bg: #f3f3f3;
+  --panel: #fff;
+  --text: #666;
+  --text-strong: #444;
+  --muted: #8a8a8a;
+  --from: #ff8069;
+  --to: #ff6e90;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font: 300 18px/1.75 Lato, "Helvetica Neue", Helvetica, sans-serif;
+}
+a { color: inherit; }
+header {
+  padding: 28px 16px 22px;
+  border-bottom: 10px solid var(--panel);
+  background: linear-gradient(var(--from), var(--to));
+  color: #fff;
+  text-align: center;
+}
+.logo { display: inline-flex; flex-direction: column; align-items: center; text-decoration: none; }
+.logo img { width: 96px; height: 96px; }
+.brand { font-size: 26px; font-weight: 400; line-height: 46px; letter-spacing: 0.08em; text-transform: uppercase; }
+.tagline { margin: 0; font-size: 15px; letter-spacing: 0.04em; opacity: 0.9; }
+main { flex: 1; width: 100%; max-width: 600px; margin: 48px auto; padding: 0 16px; text-align: center; }
+h2 { margin: 0 0 10px; font-size: 30px; font-weight: 300; line-height: 1.4; text-transform: uppercase; }
+p { margin: 0 0 10px; }
+.lead { font-size: 20px; }
+.hint { font-size: 15px; color: var(--muted); }
+.actions { display: flex; justify-content: center; margin: 32px 0; }
+.btn {
+  display: inline-block;
+  padding: 0;
+  border: 0;
+  background: linear-gradient(90deg, var(--from), var(--to));
+  color: #fff;
+  font: 400 22px/1 Lato, "Helvetica Neue", Helvetica, sans-serif;
+  letter-spacing: 0.05em;
+  text-decoration: none;
+  text-transform: uppercase;
+  cursor: pointer;
+  transform: skew(-10deg);
+  transition: transform 0.1s linear, filter 0.1s linear;
+  user-select: none;
+}
+.btn span { display: block; padding: 16px 36px; transform: skew(10deg); }
+.btn:hover { filter: brightness(1.05); transform: skew(-10deg) translateY(-2px); }
+.btn:focus-visible { outline: 3px solid var(--text-strong); outline-offset: 4px; }
+.invite { display: flex; margin: 32px 0 0; overflow: hidden; background: var(--panel); }
+.invite input {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 0;
+  background: var(--panel);
+  color: var(--text-strong);
+  font: 300 16px Lato, "Helvetica Neue", Helvetica, sans-serif;
+}
+.invite .btn { margin-right: -10px; border-left: 10px solid var(--bg); font-size: 18px; }
+.invite .btn span { padding: 14px 30px 14px 22px; }
+.room { color: var(--text-strong); font-weight: 700; }
+.loader { display: none; margin: 24px 0; }
+.loading .create { display: none; }
+.loading .loader { display: block; }
+.loader svg { width: 260px; max-width: 100%; height: auto; }
+.trail {
+  fill: none;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: draw 2.4s ease-in-out infinite;
+}
+.trail:nth-child(2) { animation-delay: 0.3s; }
+.trail:nth-child(3) { animation-delay: 0.6s; }
+@keyframes draw {
+  0% { stroke-dashoffset: 100; opacity: 1; }
+  60% { stroke-dashoffset: 0; opacity: 1; }
+  85% { stroke-dashoffset: 0; opacity: 0; }
+  100% { stroke-dashoffset: 100; opacity: 0; }
+}
+.status { font-size: 20px; color: var(--text-strong); }
+.elapsed { font-variant-numeric: tabular-nums; }
+footer { padding: 20px 16px; background: #e2e2e2; color: var(--muted); font-size: 14px; text-align: center; }
+@media (prefers-reduced-motion: reduce) {
+  .trail { animation: none; stroke-dashoffset: 0; }
+  .btn, .btn:hover { transition: none; transform: skew(-10deg); }
+}
+"""
+
 CREATE_ROOM_HTML = """
-    <p>Create a room and share its invite link with your friends.</p>
-    <form method="post" action="new">
-      <button type="submit">Create a room</button>
+    <form id="create" method="post" action="new">
+      <p class="lead">Create a room and share its invite link with your friends.</p>
+      <div class="actions create">
+        <button class="btn" type="submit"><span>Create a room</span></button>
+      </div>
+      <div class="loader" role="status" aria-live="polite">
+        <svg viewBox="0 0 260 110" aria-hidden="true">
+          <path class="trail" pathLength="100" stroke="#36b0bb" d="M10 80 C 60 10, 110 10, 140 55 S 210 100, 250 30"/>
+          <path class="trail" pathLength="100" stroke="#ff6e90" d="M10 30 C 50 90, 100 100, 130 60 S 200 5, 250 75"/>
+          <path class="trail" pathLength="100" stroke="#4b5ff4" d="M10 55 C 70 55, 90 20, 130 25 S 220 90, 250 55"/>
+        </svg>
+        <p class="status">Starting a game server&hellip; <span class="elapsed">0s</span></p>
+        <p class="hint">A new container can take up to a minute to boot.</p>
+      </div>
     </form>
+    <script>
+      const form = document.getElementById("create");
+      const button = form.querySelector("button");
+      const elapsed = form.querySelector(".elapsed");
+      let timer;
+      form.addEventListener("submit", () => {
+        const started = Date.now();
+        form.classList.add("loading");
+        button.disabled = true;
+        timer = setInterval(() => {
+          elapsed.textContent = `${Math.floor((Date.now() - started) / 1000)}s`;
+        }, 250);
+      });
+      window.addEventListener("pageshow", (event) => {
+        if (!event.persisted) return;
+        clearInterval(timer);
+        form.classList.remove("loading");
+        button.disabled = false;
+        elapsed.textContent = "0s";
+      });
+    </script>
 """
 
 INVITE_HTML = """
-    <p>Your room is ready. Send this invite link to your friends,
-       then join using the same link.</p>
-    <p><input id="invite" value="{invite}" readonly style="width: 100%; box-sizing: border-box;"></p>
-    <p>
-      <button id="copy" type="button">Copy invite link</button>
-      <a href="{invite}">Play</a>
-    </p>
+    <h2>Your room is ready</h2>
+    <p class="lead">Send this invite link to your friends, then join using the same link.</p>
+    <div class="invite">
+      <input id="invite" value="{invite}" readonly aria-label="Invite link">
+      <button id="copy" class="btn" type="button"><span>Copy</span></button>
+    </div>
+    <div class="actions">
+      <a id="play" class="btn" href="{invite}"><span>Play</span></a>
+    </div>
+    <p class="hint">Room <span class="room">{room}</span> closes once it has been empty for
+       {idle_minutes} minutes.</p>
     <script>
+      const invite = document.getElementById("invite");
       const copy = document.getElementById("copy");
+      invite.addEventListener("focus", () => invite.select());
       copy.addEventListener("click", async () => {{
-        await navigator.clipboard.writeText(document.getElementById("invite").value);
-        copy.textContent = "Copied!";
+        await navigator.clipboard.writeText(invite.value);
+        copy.querySelector("span").textContent = "Copied!";
       }});
     </script>
 """
@@ -147,7 +322,7 @@ def test():
 
     with urllib.request.urlopen(urllib.request.Request(f"{ui.get_web_url()}/new", data=b"")) as resp:
         page = resp.read().decode()
-    invite = urlparse(html.unescape(re.search(r'href="([^"]+)"', page).group(1)))
+    invite = urlparse(html.unescape(re.search(r'id="play" class="btn" href="([^"]+)"', page).group(1)))
     token = parse_qs(invite.query)["modal_session_token"][0]
     server_url = f"{invite.scheme}://{invite.netloc}"
     print(f"Created room {invite.fragment.removeprefix('/room/')!r}")
