@@ -40,6 +40,7 @@ def lobby_url() -> str:
     port=PORT,
     max_concurrency=ROOMS_PER_CONTAINER,
     max_containers=MAX_CONTAINERS,
+    min_containers=1,
     routing_region=REGION,
     compute_region=REGION,
     startup_timeout=60,

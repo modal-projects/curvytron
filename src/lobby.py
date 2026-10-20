@@ -249,7 +249,7 @@ def build_api(
     return api
 
 
-@app.function(image=lobby_image, max_containers=1, scaledown_window=LOBBY_SCALEDOWN_WINDOW)
+@app.function(image=lobby_image, max_containers=1, min_containers=1, scaledown_window=LOBBY_SCALEDOWN_WINDOW)
 @modal.concurrent(max_inputs=100)
 @modal.asgi_app()
 def lobby() -> "FastAPI":

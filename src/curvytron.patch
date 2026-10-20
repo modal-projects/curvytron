@@ -2,21 +2,31 @@ diff --git a/src/client/controller/CurvytronController.js b/src/client/controlle
 index 3d661d9..6c89e13 100644
 --- a/src/client/controller/CurvytronController.js
 +++ b/src/client/controller/CurvytronController.js
-@@ -26,3 +26,3 @@ function CurvytronController($scope, $window, $location, profile, analyser, watc
+@@ -24,7 +24,7 @@ function CurvytronController($scope, $window, $location, profile, analyser, watc
+     this.reload        = this.reload.bind(this);
+ 
      // Hydrate scope
 -    this.$scope.status  = 'connecting';
 +    this.$scope.status  = window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby ? 'online' : 'connecting';
      this.$scope.reload  = this.reload;
-@@ -45,3 +45,3 @@ CurvytronController.prototype.onConnect = function(e)
+     this.$scope.profile = false;
+ 
+@@ -43,7 +43,7 @@ CurvytronController.prototype.constructor = CurvytronController;
+ CurvytronController.prototype.onConnect = function(e)
+ {
      this.$scope.status  = 'online';
 -    this.$scope.profile = true;
 +    this.$scope.profile = !(window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby);
      this.digestScope();
+ };
+ 
 diff --git a/src/client/controller/RoomController.js b/src/client/controller/RoomController.js
-index 67236b3..bc18ae5 100644
+index 67236b3..f114de3 100644
 --- a/src/client/controller/RoomController.js
 +++ b/src/client/controller/RoomController.js
-@@ -18,2 +18,14 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
+@@ -16,6 +16,18 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
+ 
+     document.body.classList.remove('game-mode');
  
 +    if (window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby) {
 +        var url = 'room/' + encodeURIComponent(decodeURIComponent($routeParams.name)),
@@ -31,11 +41,65 @@ index 67236b3..bc18ae5 100644
 +    }
 +
      var search = $location.search();
+ 
+     this.$location      = $location;
+@@ -55,10 +67,14 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
+     this.onLaunchCancel   = this.onLaunchCancel.bind(this);
+     this.launch           = this.launch.bind(this);
+     this.start            = this.start.bind(this);
++    this.copyInvite       = this.copyInvite.bind(this);
+ 
+     this.$scope.$on('$destroy', this.leaveRoom);
+ 
+     // Hydrating scope:
++    this.$scope.invite           = !!(window.CURVYTRON_LOBBY && !window.CURVYTRON_LOBBY.isLobby && window.CURVYTRON_LOBBY.url);
++    this.$scope.inviteCopied     = false;
++    this.$scope.copyInvite       = this.copyInvite;
+     this.$scope.launch            = this.launch;
+     this.$scope.submitAddPlayer   = this.addPlayer;
+     this.$scope.removePlayer      = this.removePlayer;
+@@ -94,6 +110,34 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
+ RoomController.prototype = Object.create(AbstractController.prototype);
+ RoomController.prototype.constructor = RoomController;
+ 
++/**
++ * Copy invite link
++ */
++RoomController.prototype.copyInvite = function()
++{
++    var url = window.CURVYTRON_LOBBY.url + '/room/' + encodeURIComponent(this.room.name);
++
++    if (!this.room.config.open) {
++        url += '?password=' + encodeURIComponent(this.room.config.password);
++    }
++
++    if (!navigator.clipboard || !navigator.clipboard.writeText) {
++        window.prompt('Copy this invite link', url);
++        return;
++    }
++
++    navigator.clipboard.writeText(url).then(function () {
++        this.$scope.inviteCopied = true;
++        this.applyScope();
++        setTimeout(function () {
++            this.$scope.inviteCopied = false;
++            this.applyScope();
++        }.bind(this), 2000);
++    }.bind(this)).catch(function () {
++        window.prompt('Copy this invite link', url);
++    });
++};
++
+ /**
+  * Join room and load scope
+  */
 diff --git a/src/client/controller/RoomsController.js b/src/client/controller/RoomsController.js
 index 266f2c9..cfc77ba 100644
 --- a/src/client/controller/RoomsController.js
 +++ b/src/client/controller/RoomsController.js
-@@ -13,2 +13,7 @@ function RoomsController($scope, $location, client)
+@@ -11,6 +11,11 @@ function RoomsController($scope, $location, client)
+ 
+     document.body.classList.remove('game-mode');
  
 +    if (window.CURVYTRON_LOBBY && !window.CURVYTRON_LOBBY.isLobby && window.CURVYTRON_LOBBY.url) {
 +        window.location.replace(window.CURVYTRON_LOBBY.url);
@@ -43,12 +107,20 @@ index 266f2c9..cfc77ba 100644
 +    }
 +
      this.$location  = $location;
-@@ -34,3 +39,3 @@ function RoomsController($scope, $location, client)
+     this.client     = client;
+     this.repository = new RoomsRepository(this.client);
+@@ -32,7 +37,7 @@ function RoomsController($scope, $location, client)
+     this.$scope.quickPlay       = this.quickPlay;
+     this.$scope.roomMaxLength   = Room.prototype.maxLength;
      this.$scope.roomName        = '';
 -    this.$scope.$parent.profile = true;
 +    this.$scope.$parent.profile = !(window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby);
  
-@@ -75,2 +80,10 @@ RoomsController.prototype.createRoom = function(e)
+     this.attachEvents();
+ }
+@@ -73,6 +78,14 @@ RoomsController.prototype.detachEvents = function()
+  */
+ RoomsController.prototype.createRoom = function(e)
  {
 +    if (window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby) {
 +        var name = (this.$scope.roomName || '').substr(0, Room.prototype.maxLength).trim();
@@ -59,7 +131,11 @@ index 266f2c9..cfc77ba 100644
 +    }
 +
      this.repository.create(this.$scope.roomName, this.onCreateRoom);
-@@ -99,2 +112,16 @@ RoomsController.prototype.joinRoom = function(room)
+ };
+ 
+@@ -97,6 +110,20 @@ RoomsController.prototype.onCreateRoom = function(result)
+  */
+ RoomsController.prototype.joinRoom = function(room)
  {
 +    if (window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby) {
 +        if (room.open || (room.password && room.password.match(new RegExp('[0-9]{4}')))) {
@@ -76,11 +152,15 @@ index 266f2c9..cfc77ba 100644
 +    }
 +
      if (room.open) {
+         this.$location.path(room.getUrl());
+     } else if (room.password && room.password.match(new RegExp('[0-9]{4}'))) {
 diff --git a/src/client/core/SocketClient.js b/src/client/core/SocketClient.js
 index 02c8b56..8a78136 100644
 --- a/src/client/core/SocketClient.js
 +++ b/src/client/core/SocketClient.js
-@@ -12,2 +12,13 @@ function SocketClient()
+@@ -10,6 +10,17 @@ function SocketClient()
+     this.onOpen       = this.onOpen.bind(this);
+     this.onConnection = this.onConnection.bind(this);
  
 +    if (window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby) {
 +        BaseSocketClient.call(this, {
@@ -94,20 +174,32 @@ index 02c8b56..8a78136 100644
 +    }
 +
      var Socket = window.MozWebSocket || window.WebSocket;
+ 
+     var protocol = 'ws://';
 diff --git a/src/client/repository/RoomsRepository.js b/src/client/repository/RoomsRepository.js
 index 77e7122..d8044b0 100644
 --- a/src/client/repository/RoomsRepository.js
 +++ b/src/client/repository/RoomsRepository.js
-@@ -11,2 +11,4 @@ function RoomsRepository(client)
+@@ -9,6 +9,8 @@ function RoomsRepository(client)
+ 
+     this.client = client;
      this.rooms  = new Collection([], 'name');
 +    this.polling = false;
 +    this.poll     = null;
  
-@@ -18,2 +20,3 @@ function RoomsRepository(client)
+     this.start            = this.start.bind(this);
+     this.onRoomOpen       = this.onRoomOpen.bind(this);
+@@ -16,6 +18,7 @@ function RoomsRepository(client)
+     this.onRoomPlayers    = this.onRoomPlayers.bind(this);
+     this.onRoomGame       = this.onRoomGame.bind(this);
      this.onRoomConfigOpen = this.onRoomConfigOpen.bind(this);
 +    this.pollRooms        = this.pollRooms.bind(this);
  }
-@@ -179,2 +182,58 @@ RoomsRepository.prototype.onRoomGame = function(e)
+ 
+ RoomsRepository.prototype = Object.create(EventEmitter.prototype);
+@@ -177,11 +180,76 @@ RoomsRepository.prototype.onRoomGame = function(e)
+     }
+ };
  
 +/**
 + * Poll the lobby for rooms and emit changes
@@ -166,7 +258,9 @@ index 77e7122..d8044b0 100644
 +};
 +
  /**
-@@ -184,2 +243,11 @@ RoomsRepository.prototype.start = function()
+  * Start
+  */
+ RoomsRepository.prototype.start = function()
  {
 +    if (window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby) {
 +        this.attachEvents();
@@ -178,7 +272,11 @@ index 77e7122..d8044b0 100644
 +    }
 +
      if (this.client.connected) {
-@@ -197,2 +265,8 @@ RoomsRepository.prototype.stop = function()
+         this.attachEvents();
+         this.client.addEvent('room:fetch');
+@@ -195,6 +263,12 @@ RoomsRepository.prototype.start = function()
+  */
+ RoomsRepository.prototype.stop = function()
  {
 +    this.polling = false;
 +    if (this.poll) {
@@ -187,28 +285,52 @@ index 77e7122..d8044b0 100644
 +    }
 +
      this.detachEvents();
+     this.rooms.clear();
+ };
 diff --git a/src/client/views/index.html b/src/client/views/index.html
 index d4c645b..c916bea 100644
 --- a/src/client/views/index.html
 +++ b/src/client/views/index.html
-@@ -78,2 +78,3 @@
+@@ -76,6 +76,7 @@
+             </div>
+         </footer>
  
 +        <script src="modal.js"></script>
          <script src="js/dependencies.js"></script>
+         <script src="js/curvytron.js"></script>
+     </body>
+diff --git a/src/client/views/rooms/detail.html b/src/client/views/rooms/detail.html
+index 488d667..5308f5c 100644
+--- a/src/client/views/rooms/detail.html
++++ b/src/client/views/rooms/detail.html
+@@ -4,6 +4,7 @@
+             {{ ::room.name }}
+             <i class="icon-params" ng-click="toggleParameters()" ng-class="{'active': displayParameters}"></i>
+         </h2>
++        <button type="button" class="btn" ng-if="invite" ng-click="copyInvite()">{{ inviteCopied ? 'Copied!' : 'Copy invite link' }}</button>
+ 
+         <div id="room-parameters" ng-controller="RoomConfigController" ng-if="displayParameters">
+             <ng-include src="'js/views/rooms/parameters.html'"></ng-include>
 diff --git a/src/server/controller/RoomsController.js b/src/server/controller/RoomsController.js
 index a2f9417..3eab49c 100644
 --- a/src/server/controller/RoomsController.js
 +++ b/src/server/controller/RoomsController.js
-@@ -130,3 +130,3 @@ RoomsController.prototype.onJoinRoom = function(client, data, callback)
+@@ -128,7 +128,7 @@ RoomsController.prototype.onCreateRoom = function(client, data, callback)
+  */
+ RoomsController.prototype.onJoinRoom = function(client, data, callback)
  {
 -    var room = this.repository.get(data.name);
 +    var room = this.repository.get(data.name) || this.repository.create(data.name);
  
+     if (!room) {
+         return callback({success: false, error: 'Unknown room "' + data.name + '".'});
 diff --git a/src/server/core/Server.js b/src/server/core/Server.js
 index 1b7ff44..f0260d0 100644
 --- a/src/server/core/Server.js
 +++ b/src/server/core/Server.js
-@@ -19,3 +19,11 @@ function Server(config)
+@@ -17,7 +17,15 @@ function Server(config)
+     this.onSocketConnection    = this.onSocketConnection.bind(this);
+     this.onSocketDisconnection = this.onSocketDisconnection.bind(this);
      this.onError               = this.onError.bind(this);
 +    this.serveModalConfig      = this.serveModalConfig.bind(this);
 +    this.getRoom               = this.getRoom.bind(this);
@@ -220,7 +342,11 @@ index 1b7ff44..f0260d0 100644
 +    this.app.get('/rooms/:name', this.getRoom);
 +    this.app.put('/rooms/:name', this.ensureRoom);
      this.app.use(express['static']('web'));
-@@ -51,2 +59,55 @@ Server.prototype.authorizationHandler = function(request, socket, head)
+ 
+     this.server.on('error', this.onError);
+@@ -49,6 +57,59 @@ Server.prototype.authorizationHandler = function(request, socket, head)
+     return this.onSocketConnection(websocket, ip);
+ };
  
 +/**
 + * Serve the Modal lobby URL to the client
@@ -276,3 +402,5 @@ index 1b7ff44..f0260d0 100644
 +};
 +
  /**
+  * On socket connection
+  *
