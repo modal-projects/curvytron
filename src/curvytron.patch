@@ -300,17 +300,38 @@ index d4c645b..c916bea 100644
          <script src="js/curvytron.js"></script>
      </body>
 diff --git a/src/client/views/rooms/detail.html b/src/client/views/rooms/detail.html
-index 488d667..5308f5c 100644
+index 488d667..f03b948 100644
 --- a/src/client/views/rooms/detail.html
 +++ b/src/client/views/rooms/detail.html
 @@ -4,6 +4,7 @@
              {{ ::room.name }}
              <i class="icon-params" ng-click="toggleParameters()" ng-class="{'active': displayParameters}"></i>
          </h2>
-+        <button type="button" class="btn" ng-if="invite" ng-click="copyInvite()">{{ inviteCopied ? 'Copied!' : 'Copy invite link' }}</button>
++        <button type="button" class="btn invite-link" ng-if="invite" ng-click="copyInvite()">{{ inviteCopied ? 'Copied!' : 'Copy invite link' }}</button>
  
          <div id="room-parameters" ng-controller="RoomConfigController" ng-if="displayParameters">
              <ng-include src="'js/views/rooms/parameters.html'"></ng-include>
+diff --git a/src/sass/pages/_room.scss b/src/sass/pages/_room.scss
+index 367ba37..d6f19c0 100644
+--- a/src/sass/pages/_room.scss
++++ b/src/sass/pages/_room.scss
+@@ -100,6 +100,16 @@
+         }
+     }
+ 
++    .invite-link {
++        border: 2px solid $header-background-from;
++        @include horizontal-gradient($header-background-from, $header-background-to);
++        color: #FFF;
++
++        &:hover {
++            border-color: $header-background-to;
++        }
++    }
++
+     .start-now {
+         float: right;
+         margin-left: 25px;
 diff --git a/src/server/controller/RoomsController.js b/src/server/controller/RoomsController.js
 index a2f9417..3eab49c 100644
 --- a/src/server/controller/RoomsController.js
