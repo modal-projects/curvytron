@@ -318,10 +318,10 @@ index d4c645b..1dfe4e1 100644
          <script src="js/curvytron.js"></script>
      </body>
 diff --git a/src/client/views/pages/about.html b/src/client/views/pages/about.html
-index ce69e90..e3610a4 100644
+index ce69e90..91be08e 100644
 --- a/src/client/views/pages/about.html
 +++ b/src/client/views/pages/about.html
-@@ -1,61 +1,8 @@
+@@ -1,61 +1,9 @@
  <section id="about" class="container">
      <section>
 -        <h1>Team</h1>
@@ -382,7 +382,8 @@ index ce69e90..e3610a4 100644
 -            </div>
 -        </div>
 +        <h1>About</h1>
-+        <p>Curvytron is made by the Curvytron team, inspired by <a href="http://curvefever.com" target="_blank" class="animated">Curve Fever</a>. Meet them on <a href="https://www.curvytron.com/#/about" target="_blank" class="animated">their About page</a>, and find their source on <a href="https://github.com/Curvytron/curvytron" target="_blank" class="animated">GitHub</a>.</p>
++        <p>Curvytron is made by the Curvytron team, inspired by <a href="http://curvefever.com" target="_blank" class="animated">Curve Fever</a>.</p>
++        <p>Meet them on <a href="https://www.curvytron.com/#/about" target="_blank" class="animated">their About page</a>, and find their source on <a href="https://github.com/Curvytron/curvytron" target="_blank" class="animated">GitHub</a>.</p>
 +        <p>This copy is <a href="https://github.com/modal-projects/curvytron" target="_blank" class="animated">hosted on Modal</a> to show off <a href="https://modal.com/docs/guide/sticky-sessions" target="_blank" class="animated">Sticky Sessions</a>: each room runs in its own session.</p>
 +        <p>Play the original at <a href="https://www.curvytron.com" target="_blank" class="animated">curvytron.com</a>.</p>
      </section>
