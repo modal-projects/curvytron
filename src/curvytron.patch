@@ -288,10 +288,28 @@ index 77e7122..d8044b0 100644
      this.rooms.clear();
  };
 diff --git a/src/client/views/index.html b/src/client/views/index.html
-index d4c645b..c916bea 100644
+index d4c645b..1dfe4e1 100644
 --- a/src/client/views/index.html
 +++ b/src/client/views/index.html
-@@ -76,6 +76,7 @@
+@@ -62,20 +62,19 @@
+             <div class="container">
+                 <div class="row">
+                     <div class="col-lg-6 col-md-6 col-sm-6 col-xs-6 no-padding-bottom">
+-                        <a href="https://github.com/Elao/curvytron" alt="Github repository" target="_blank" class="ml10 animated"><i class="icon-github"></i></a>
+-                        <a alt="Twitter" href="http://twitter.com/curvytron" target="_blank" class="ml10 animated"><i class="icon-twitter"></i></a>
+-                        <a alt="Reddit" href="http://www.reddit.com/r/curvytron" target="_blank" class="ml10 animated"><i class="icon-reddit"></i></a>
+-                        <a alt="About us" href="/#/about" class="ml15 animated">About Us</a>
++                        <a href="https://github.com/modal-projects/curvytron" alt="Github repository" target="_blank" class="animated"><i class="icon-github"></i></a>
++                        <a alt="About" href="/#/about" class="ml15 animated">About</a>
+                     </div>
+                     <div class="col-lg-6 col-md-6 col-sm-6 col-xs-6 no-padding-bottom text-right">
+-                        <a alt="élao" href="http://www.elao.com" class="game-copy animated" target="_blank">
+-                            Handmade at Elao with <i class="icon-love"></i>
++                        <a alt="Modal" href="https://github.com/modal-projects/curvytron" class="game-copy animated" target="_blank">
++                            Hosted on Modal
+                         </a>
+                     </div>
+                 </div>
              </div>
          </footer>
  
@@ -299,6 +317,77 @@ index d4c645b..c916bea 100644
          <script src="js/dependencies.js"></script>
          <script src="js/curvytron.js"></script>
      </body>
+diff --git a/src/client/views/pages/about.html b/src/client/views/pages/about.html
+index ce69e90..91be08e 100644
+--- a/src/client/views/pages/about.html
++++ b/src/client/views/pages/about.html
+@@ -1,61 +1,9 @@
+ <section id="about" class="container">
+     <section>
+-        <h1>Team</h1>
+-        <div class="row">
+-            <div class="col-lg-4 col-md-4 col-sm-4">
+-                <a href="https://twitter.com/tom32i" target="_blank"><img src="http://www.gravatar.com/avatar/20e88ca8f96ba64d6767fb7be675c792?s=120" alt="Thomas JARRAND" class="rounded"></a>
+-                <h3><a href="https://twitter.com/tom32i" target="_blank" class="animated">Thomas JARRAND</a></h3>
+-                <p>Co-founder / Developer <br/><a href="https://twitter.com/tom32i" target="_blank" class="strong animated">@tom32i</a></p>
+-            </div>
+-            <div class="col-lg-4 col-md-4 col-sm-4">
+-                <a href="https://twitter.com/JeremyFagis" target="_blank"><img src="http://www.gravatar.com/avatar/7f70e04906c6be43177bfeafe903b649?s=120" alt="Jérémy FAGIS" class="rounded"></a>
+-                <h3><a href="https://twitter.com/JeremyFagis" target="_blank" class="animated">Jérémy FAGIS</a></h3>
+-                <p>Frontend Developer <br/><a href="https://twitter.com/JeremyFagis" target="_blank" class="strong animated">@JeremyFagis</a></p>
+-            </div>
+-            <div class="col-lg-4 col-md-4 col-sm-4">
+-                <a href="https://twitter.com/lutangar" target="_blank"><img src="http://www.gravatar.com/avatar/0384071d85ca349ff9669f56239d568c?s=120" alt="Johan DUFOUR" class="rounded"></a>
+-                <h3><a href="https://twitter.com/lutangar" target="_blank" class="animated">Johan DUFOUR</a></h3>
+-                <p>Co-founder / Developer <br/><a href="https://twitter.com/lutangar" target="_blank" class="strong animated">@lutangar</a></p>
+-            </div>
+-        </div>
+-    </section>
+-    <section>
+-        <h1>Thanks</h1>
+-        <div class="row">
+-            <div class="col-lg-2"></div>
+-            <div class="col-lg-4">
+-                <h3>Inspired By</h3>
+-                <p><a href="http://curvefever.com" target="_blank" class="animated">Curve Fever</a></p>
+-            </div>
+-            <div class="col-lg-4">
+-                <h3>Made at</h3>
+-                <p><a href="http://elao.com" target="_blank" class="animated">Elao</a> &bull; <a href="https://twitter.com/elao" target="_blank" class="animated">@elao</a></p>
+-            </div>
+-            <div class="col-lg-2"></div>
+-        </div>
+-        <div class="row">
+-            <div class="col-lg-12">
+-                <section class="pt15 pb15">
+-                    <h3>Special thanks to:</h3>
+-                    <p>
+-                        <strong>Emeric Kasbarian</strong> &bull; Developer / Balancing &bull; <a href="https://twitter.com/emerick42" target="_blank" class="animated">@emerick42</a><br/>
+-                        <strong>Jérémy James</strong> &bull; Balancing &bull; <a href="https://twitter.com/JamesJrmy" target="_blank" class="animated">@JamesJrmy</a>
+-                    </p>
+-                </section>
+-                <section class="pt15 pb15">
+-                    <h3>People from <a href="http://elao.com" target="_blank" class="animated">Elao</a> and <a href="http://www.zol.fr" target="_blank" class="animated">Zol</a></h3>
+-                    <p>Jeremy, Nicolas, Camille, Maxime, Benjamin, Florian, Guewen, Xavier</p>
+-                </section>
+-            </div>
+-        </div>
+-    </section>
+-    <section>
+-        <h1>TECHNOLOGY COLOPHON</h1>
+-        <div class="row">
+-            <div class="col-lg-12">
+-                <p>HTML5, CSS3, Javascript, Node JS</p>
+-                <p>AngularJS, Faye Websocket</p>
+-            </div>
+-        </div>
++        <h1>About</h1>
++        <p>Curvytron is made by the Curvytron team, inspired by <a href="http://curvefever.com" target="_blank" class="animated">Curve Fever</a>.</p>
++        <p>Meet them on <a href="https://www.curvytron.com/#/about" target="_blank" class="animated">their About page</a>, and find their source on <a href="https://github.com/Curvytron/curvytron" target="_blank" class="animated">GitHub</a>.</p>
++        <p>This copy is <a href="https://github.com/modal-projects/curvytron" target="_blank" class="animated">hosted on Modal</a> to show off <a href="https://modal.com/docs/guide/sticky-sessions" target="_blank" class="animated">Sticky Sessions</a>: each room runs in its own session.</p>
++        <p>Play the original at <a href="https://www.curvytron.com" target="_blank" class="animated">curvytron.com</a>.</p>
+     </section>
+ </section>
 diff --git a/src/client/views/rooms/detail.html b/src/client/views/rooms/detail.html
 index 488d667..f03b948 100644
 --- a/src/client/views/rooms/detail.html
@@ -311,6 +400,22 @@ index 488d667..f03b948 100644
  
          <div id="room-parameters" ng-controller="RoomConfigController" ng-if="displayParameters">
              <ng-include src="'js/views/rooms/parameters.html'"></ng-include>
+diff --git a/src/sass/pages/_about.scss b/src/sass/pages/_about.scss
+index 31f11b7..f630c32 100644
+--- a/src/sass/pages/_about.scss
++++ b/src/sass/pages/_about.scss
+@@ -24,6 +24,11 @@
+             }
+         }
+ 
++        p a {
++            color: $header-background-to;
++            text-decoration: underline;
++        }
++
+         h3 {
+             margin-top: 10px;
+             margin-bottom: 10px;
 diff --git a/src/sass/pages/_room.scss b/src/sass/pages/_room.scss
 index 367ba37..d6f19c0 100644
 --- a/src/sass/pages/_room.scss
@@ -425,3 +530,101 @@ index 1b7ff44..f0260d0 100644
  /**
   * On socket connection
   *
+diff --git a/web/images/favicon.png b/web/images/favicon.png
+index c414c04d6b4ea5a2820c7e5a1dcc83c0d16e70ad..dfb3808d26a522aaa0839668ea1792553d968593 100644
+GIT binary patch
+literal 3181
+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
+Tr}~g`00000NkvXXu0mjfQFlzx
+
+literal 1735
+zcmaJ?YgE%_7_Q=qGC@VWp&mm46@<0{TWO_JXbQB@icqv7UP2p6g*G(}PzoYA(Qzy{
+zCx`<^bxaO0kfSoEC^r=y2N}wo;1Cf()ZtLkp&)Ll0`A9HPLl8Y-t#=qd(BCTzsTF%
+z%-W1ZBAN4jpa5b8jL&p3@z&^cuZU$4&XeGQXc!&?V+hGZhK3>lUkS^R00frB?*18Z
+zCy`9-6k-W35&E&EsFDgBF;uNmO|VHM_jOt|ER8^LAQX`+R2<4cRSgAD$T*bE3?W^p
+z<|5$=A037S>O^9xE<(zZQPzC{xNF&jfD*xBK&y;YY1mp0<%2Gp*c;6>3h)7fM{p<~
+zgOUjS0WOLm0E6o4ETw}Wz+_Uv)eI&RbOK!HpbL#o+)QV1HJia?yQ~4mE(+ldlZCMZ
+zAg?iB#EC-*$8j~AMvIAwp~kpUQA|z)SuB=O!^Op!Ksak+RXD75R%vX<6(B?-#T05>
+zfvNzbA{>fF;T#GP>Bkh5>IqquW~@v^!Dw1oO#`WPV@l&dq458qO63Gvg9jj=;{8uy
+zjW||~&;k$*8ih%T#)a7$U8&hz41sYJ6QgM4coqG_Q5@BTqiTQ~$OKjjVW~o8G&p=<
+z2!(9EN`u2HDZ+<16heclP{`Ok$dke3@mOAT77GM<u5R=-42TQzn4T_P9$Xh_oC~4S
+zC?%r8$GNgkT#re)#$iyZ3C|FMDWVaX7ltZ<4@t8XlgF}VQoS**Z1Py#CgswIU}(nH
+z{;SpFCSrb!+lj#?4ilq~sEB#Th{4W%W)VbuFDyRfA=chKd(=1554O4{-!*$xN^+LZ
+zSE*$Z#+-BqMG(glzIjvTE@&w%WL(J=tt~O<wq)+w_@tqs%Er90BEa5e{`7eQiYMf6
+z_4n8BQ0!%I=h~sp2X-}0$41^Xzip0bep|h`oX<?2+8C;yrYFr%yI%(~6B~{uwLaZT
+z){{p@EyNi`FK+Lg@!HFOux6>GTt6Ud`(+>F;_^9d{qkBk`6eqtUtp+S+8;Eet0S#6
+z;dPl_fA4GBZAcxq@RtuZ?dgTAX6km=A2P`@WDRf1z+*S%Y0V$Sr9xEG?#4IsTe@t5
+z_ZXHr$?U54Re2n)@J!yOFN*K^jn77dyz9|rEfL>#0Vn;)uC?0d$IkSFdDAs{R<DmN
+zFzs$=dZw4>EI!#m_O09c9+e;2dOrTdohnvEy^mW}#r<im#rJLJCfT*FF0X<5SOuB4
+zMsM)#7o`;Do0N*z#RLxqBOw>IpSiGk=7m}{y-|BAzeefwU}|Z)B*?#5@4Mo6xio})
+zNl<hu@pZ$f-05;KBhGnNt?#C5e$TzJ<@MW~FCS!{k6am8=abbQje*`#c~iLtlYVjm
+zrN5WbYiRB5ogvse$BZh^DZB@ijns}Tp;<U`mNahYeByOBdzdj>6Z<6dR#6We|D$!O
+zXo*`x8RJT2v0D2A)C%^bUv^#Pk#gvTrAS=Jiw-I^(@9DX=O3zF6;|f3;c=IQp2B&s
+zcHpW+)!UIVtdHqCt%K5nGw-l~sPn?x5giRls>*rS!XLA3TkHN<)|S_FY{yAz-}NX_
+z)$y~p3OcUNcZ0ggXMW1)TVI?8mNW^r3}iP2Hq836BqYv*bM(8U%!Mu%1{-FXhz+LA
+zdzE343!l?*t;KQo%me$y4$UQrRk_(T$K(Blk{j=UwyvS|*ulyjSN>`r$jA}3ck)I_
+zZ3|yPM|v%rPRxyNR|<;1iM^|Ml+e8YoY=1ChoJ+xY56|&+pw*JhN5n#Sveco;LeBp
+zLu%HKW-NG^Q1kg|M@yu?@6yE;_Ho<oLn`lhj3z7=1ikCdzE|%PKdnz&(>~C*B_q9c
+z`JV?;9ea}WrlW3^)l*8f*6+#DpMlhun-iyyo__ypasC2~Yy7qFc_OIXbLYN)0NZo7
+A(EtDd
+
