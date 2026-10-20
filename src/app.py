@@ -26,7 +26,7 @@ import modal
 app = modal.App("curvytron")
 
 CURVYTRON_REPO = "https://github.com/KartikYZ/curvytron"
-CURVYTRON_COMMIT = "48665a06392da75ed8a64e4667adf484004a47b9"
+CURVYTRON_COMMIT = "c9a521c5759c4193237058c0784aa8c313b055ec"
 CURVYTRON_DIR = "/curvytron"
 
 image = (
