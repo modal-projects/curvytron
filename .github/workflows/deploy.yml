@@ -13,6 +13,7 @@ jobs:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       MODAL_ENVIRONMENT: ${{ vars.MODAL_ENVIRONMENT || 'main' }}
+      CURVYTRON_DOMAIN: ${{ vars.CURVYTRON_DOMAIN || 'kathir-world-is-better.modal.dev' }}
     steps:
       - uses: actions/checkout@v4
 

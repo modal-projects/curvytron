@@ -32,4 +32,4 @@ uv run modal deploy -m src.app
 
 ## Deployment
 
-`.github/workflows/deploy.yml` deploys on every push to `main`, and can also be run manually. It needs the repository secrets `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` for the target workspace. It deploys to the `main` environment unless the repository variable `MODAL_ENVIRONMENT` is set.
+`.github/workflows/deploy.yml` deploys on every push to `main`, and can also be run manually. It needs the repository secrets `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` for the target workspace. It deploys to the `main` environment unless the repository variable `MODAL_ENVIRONMENT` is set. The lobby is served at `kathir-world-is-better.modal.dev` unless the repository variable `CURVYTRON_DOMAIN` is set; locally, set `CURVYTRON_DOMAIN` when deploying to use a custom domain.

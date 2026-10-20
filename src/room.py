@@ -10,6 +10,8 @@ from .config import (
     APP_NAME,
     BUFFER_CONTAINERS,
     CURVYTRON_DIR,
+    DOMAIN_ENV,
+    LOBBY_DOMAIN,
     MAX_CONTAINERS,
     PORT,
     REGION,
@@ -22,6 +24,8 @@ from .config import (
 
 def lobby_url() -> str:
     """Resolve the lobby's public URL for this app, including under `modal serve`."""
+    if LOBBY_DOMAIN:
+        return f"https://{LOBBY_DOMAIN}"
     try:
         from modal.app import _App
 
@@ -40,6 +44,7 @@ def lobby_url() -> str:
 @app.server(
     image=room_image,
     port=PORT,
+    env=DOMAIN_ENV,
     target_concurrency=TARGET_ROOMS_PER_CONTAINER,
     max_concurrency=ROOMS_PER_CONTAINER,
     max_containers=MAX_CONTAINERS,

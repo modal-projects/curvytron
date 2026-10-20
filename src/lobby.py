@@ -14,6 +14,8 @@ from .common import app, lobby_image, rooms
 from .config import (
     APP_NAME,
     CURVYTRON_DIR,
+    DOMAIN_ENV,
+    LOBBY_DOMAIN,
     LOBBY_SCALEDOWN_WINDOW,
     ROOM_IDLE_TIMEOUT,
     ROOM_NAME_MAX_LENGTH,
@@ -201,7 +203,7 @@ def build_api(
 
     @api.get("/modal.js")
     async def modal_config() -> Response:
-        url = (await lobby.get_web_url.aio() or "").rstrip("/")
+        url = f"https://{LOBBY_DOMAIN}" if LOBBY_DOMAIN else (await lobby.get_web_url.aio() or "").rstrip("/")
         config = json.dumps({"isLobby": True, "url": url})
         return Response(
             f"window.CURVYTRON_LOBBY = {config};",
@@ -249,8 +251,14 @@ def build_api(
     return api
 
 
-@app.function(image=lobby_image, max_containers=3, min_containers=1, scaledown_window=LOBBY_SCALEDOWN_WINDOW)
+@app.function(
+    image=lobby_image,
+    max_containers=3,
+    min_containers=1,
+    scaledown_window=LOBBY_SCALEDOWN_WINDOW,
+    env=DOMAIN_ENV,
+)
 @modal.concurrent(max_inputs=50, target_inputs=25)
-@modal.asgi_app()
+@modal.asgi_app(custom_domains=[LOBBY_DOMAIN] if LOBBY_DOMAIN else None)
 def lobby() -> "FastAPI":
     return build_api()
