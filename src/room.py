@@ -8,6 +8,7 @@ import modal
 from .common import app, room_image
 from .config import (
     APP_NAME,
+    BUFFER_CONTAINERS,
     CURVYTRON_DIR,
     MAX_CONTAINERS,
     PORT,
@@ -15,6 +16,7 @@ from .config import (
     ROOM_SCALEDOWN_WINDOW,
     ROOMS_PER_CONTAINER,
     SESSION_QUEUE_TIMEOUT,
+    TARGET_ROOMS_PER_CONTAINER,
 )
 
 
@@ -38,9 +40,11 @@ def lobby_url() -> str:
 @app.server(
     image=room_image,
     port=PORT,
+    target_concurrency=TARGET_ROOMS_PER_CONTAINER,
     max_concurrency=ROOMS_PER_CONTAINER,
     max_containers=MAX_CONTAINERS,
     min_containers=1,
+    buffer_containers=BUFFER_CONTAINERS,
     routing_region=REGION,
     compute_region=REGION,
     startup_timeout=60,
