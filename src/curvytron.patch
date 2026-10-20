@@ -288,10 +288,10 @@ index 77e7122..d8044b0 100644
      this.rooms.clear();
  };
 diff --git a/src/client/views/index.html b/src/client/views/index.html
-index d4c645b..82d69f1 100644
+index d4c645b..1dfe4e1 100644
 --- a/src/client/views/index.html
 +++ b/src/client/views/index.html
-@@ -62,20 +62,18 @@
+@@ -62,20 +62,19 @@
              <div class="container">
                  <div class="row">
                      <div class="col-lg-6 col-md-6 col-sm-6 col-xs-6 no-padding-bottom">
@@ -299,13 +299,14 @@ index d4c645b..82d69f1 100644
 -                        <a alt="Twitter" href="http://twitter.com/curvytron" target="_blank" class="ml10 animated"><i class="icon-twitter"></i></a>
 -                        <a alt="Reddit" href="http://www.reddit.com/r/curvytron" target="_blank" class="ml10 animated"><i class="icon-reddit"></i></a>
 -                        <a alt="About us" href="/#/about" class="ml15 animated">About Us</a>
-+                        <a alt="About" href="/#/about" class="ml10 animated">About</a>
++                        <a href="https://github.com/modal-projects/curvytron" alt="Github repository" target="_blank" class="animated"><i class="icon-github"></i></a>
++                        <a alt="About" href="/#/about" class="ml15 animated">About</a>
                      </div>
                      <div class="col-lg-6 col-md-6 col-sm-6 col-xs-6 no-padding-bottom text-right">
 -                        <a alt="élao" href="http://www.elao.com" class="game-copy animated" target="_blank">
 -                            Handmade at Elao with <i class="icon-love"></i>
 +                        <a alt="Modal" href="https://github.com/modal-projects/curvytron" class="game-copy animated" target="_blank">
-+                            Hosted on Modal with <i class="icon-love"></i>
++                            Hosted on Modal
                          </a>
                      </div>
                  </div>
