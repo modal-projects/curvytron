@@ -398,6 +398,22 @@ index 488d667..f03b948 100644
  
          <div id="room-parameters" ng-controller="RoomConfigController" ng-if="displayParameters">
              <ng-include src="'js/views/rooms/parameters.html'"></ng-include>
+diff --git a/src/sass/pages/_about.scss b/src/sass/pages/_about.scss
+index 31f11b7..f630c32 100644
+--- a/src/sass/pages/_about.scss
++++ b/src/sass/pages/_about.scss
+@@ -24,6 +24,11 @@
+             }
+         }
+ 
++        p a {
++            color: $header-background-to;
++            text-decoration: underline;
++        }
++
+         h3 {
+             margin-top: 10px;
+             margin-bottom: 10px;
 diff --git a/src/sass/pages/_room.scss b/src/sass/pages/_room.scss
 index 367ba37..d6f19c0 100644
 --- a/src/sass/pages/_room.scss
