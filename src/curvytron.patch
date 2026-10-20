@@ -288,24 +288,23 @@ index 77e7122..d8044b0 100644
      this.rooms.clear();
  };
 diff --git a/src/client/views/index.html b/src/client/views/index.html
-index d4c645b..972a5cc 100644
+index d4c645b..82d69f1 100644
 --- a/src/client/views/index.html
 +++ b/src/client/views/index.html
-@@ -62,20 +62,21 @@
+@@ -62,20 +62,18 @@
              <div class="container">
                  <div class="row">
                      <div class="col-lg-6 col-md-6 col-sm-6 col-xs-6 no-padding-bottom">
 -                        <a href="https://github.com/Elao/curvytron" alt="Github repository" target="_blank" class="ml10 animated"><i class="icon-github"></i></a>
-+                        <a href="https://github.com/Curvytron/curvytron" alt="Github repository" target="_blank" class="ml10 animated"><i class="icon-github"></i></a>
-                         <a alt="Twitter" href="http://twitter.com/curvytron" target="_blank" class="ml10 animated"><i class="icon-twitter"></i></a>
-                         <a alt="Reddit" href="http://www.reddit.com/r/curvytron" target="_blank" class="ml10 animated"><i class="icon-reddit"></i></a>
+-                        <a alt="Twitter" href="http://twitter.com/curvytron" target="_blank" class="ml10 animated"><i class="icon-twitter"></i></a>
+-                        <a alt="Reddit" href="http://www.reddit.com/r/curvytron" target="_blank" class="ml10 animated"><i class="icon-reddit"></i></a>
 -                        <a alt="About us" href="/#/about" class="ml15 animated">About Us</a>
-+                        <a alt="About" href="/#/about" class="ml15 animated">About</a>
++                        <a alt="About" href="/#/about" class="ml10 animated">About</a>
                      </div>
                      <div class="col-lg-6 col-md-6 col-sm-6 col-xs-6 no-padding-bottom text-right">
 -                        <a alt="élao" href="http://www.elao.com" class="game-copy animated" target="_blank">
 -                            Handmade at Elao with <i class="icon-love"></i>
-+                        <a alt="Modal" href="https://modal.com" class="game-copy animated" target="_blank">
++                        <a alt="Modal" href="https://github.com/modal-projects/curvytron" class="game-copy animated" target="_blank">
 +                            Hosted on Modal with <i class="icon-love"></i>
                          </a>
                      </div>
@@ -318,7 +317,7 @@ index d4c645b..972a5cc 100644
          <script src="js/curvytron.js"></script>
      </body>
 diff --git a/src/client/views/pages/about.html b/src/client/views/pages/about.html
-index ce69e90..7e7fa45 100644
+index ce69e90..e3610a4 100644
 --- a/src/client/views/pages/about.html
 +++ b/src/client/views/pages/about.html
 @@ -1,61 +1,8 @@
@@ -382,9 +381,9 @@ index ce69e90..7e7fa45 100644
 -            </div>
 -        </div>
 +        <h1>About</h1>
-+        <p>Curvytron is made by the <a href="https://www.curvytron.com/#/about" target="_blank" class="animated">Curvytron team</a>, inspired by <a href="http://curvefever.com" target="_blank" class="animated">Curve Fever</a>.</p>
-+        <p>This copy is hosted on <a href="https://modal.com" target="_blank" class="animated">Modal</a> to show off <a href="https://modal.com/docs/guide/sticky-sessions" target="_blank" class="animated">Sticky Sessions</a>: each room runs in its own session.</p>
-+        <p>Play the original at <a href="https://www.curvytron.com" target="_blank" class="animated">curvytron.com</a>, or see the source on <a href="https://github.com/Curvytron/curvytron" target="_blank" class="animated">GitHub</a>.</p>
++        <p>Curvytron is made by the Curvytron team, inspired by <a href="http://curvefever.com" target="_blank" class="animated">Curve Fever</a>. Meet them on <a href="https://www.curvytron.com/#/about" target="_blank" class="animated">their About page</a>, and find their source on <a href="https://github.com/Curvytron/curvytron" target="_blank" class="animated">GitHub</a>.</p>
++        <p>This copy is <a href="https://github.com/modal-projects/curvytron" target="_blank" class="animated">hosted on Modal</a> to show off <a href="https://modal.com/docs/guide/sticky-sessions" target="_blank" class="animated">Sticky Sessions</a>: each room runs in its own session.</p>
++        <p>Play the original at <a href="https://www.curvytron.com" target="_blank" class="animated">curvytron.com</a>.</p>
      </section>
  </section>
 diff --git a/src/client/views/rooms/detail.html b/src/client/views/rooms/detail.html
