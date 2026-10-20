@@ -17,6 +17,13 @@ TARGET_ROOMS_PER_CONTAINER = 3
 MAX_CONTAINERS = 10
 BUFFER_CONTAINERS = 1
 REGION = "us-east"
+ASHBURN_METRO = [
+    "us-east-1",  # AWS N. Virginia (where the us-east proxies run)
+    "us-east4",  # GCP Ashburn
+    "us-ashburn-1",  # OCI Ashburn
+    "ASH",  # lat Ashburn (case-sensitive)
+    "ashburn",  # rkd Ashburn
+]
 ROOM_IDLE_TIMEOUT = 5 * MINUTES
 ROOM_NAME_MAX_LENGTH = 25
 SESSION_QUEUE_TIMEOUT = 120

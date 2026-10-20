@@ -8,6 +8,7 @@ import modal
 from .common import app, room_image
 from .config import (
     APP_NAME,
+    ASHBURN_METRO,
     BUFFER_CONTAINERS,
     CURVYTRON_DIR,
     DOMAIN_ENV,
@@ -51,7 +52,7 @@ def lobby_url() -> str:
     min_containers=1,
     buffer_containers=BUFFER_CONTAINERS,
     routing_region=REGION,
-    compute_region=REGION,
+    compute_region=ASHBURN_METRO,
     startup_timeout=60,
     scaledown_window=ROOM_SCALEDOWN_WINDOW,
     experimental_options={"queue_timeout": SESSION_QUEUE_TIMEOUT},

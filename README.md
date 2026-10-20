@@ -5,7 +5,7 @@ A public multiplayer demo of [Modal Sticky Sessions](https://modal.com/docs/guid
 Curvytron's Node.js server keeps each room's game state in process memory, so every player in a room must reach the same container. The lobby is a Modal web function; it maps room names to session tokens in a Modal Dict, opens rooms on sessioned `Room` servers, and redirects players to the server. Share links as `<lobby>/room/<name>`.
 
 - The room server is built from a pinned upstream commit with a small patch for lobby discovery and room creation.
-- Each container hosts up to 8 rooms (sessions), with at most 2 containers. Routing and compute are pinned to `us-east`.
+- Each container hosts up to 8 rooms (sessions), with at most 2 containers. Routing is pinned to `us-east`, and compute to the Ashburn metro (AWS `us-east-1`, GCP `us-east4`, OCI `us-ashburn-1`, and other Ashburn regions).
 - A room's session ends after it has been empty for 5 minutes.
 
 ## Quickstart
