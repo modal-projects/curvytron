@@ -14,7 +14,9 @@ every player in a room reaches the same container. A session ends once its room 
 been empty for `ROOM_IDLE_TIMEOUT`.
 
 `<launcher>/` opens Curvytron's lobby on one shared lobby session, stored in the same
-Dict, and the lobby creates rooms through `<launcher>/room/<name>`.
+Dict, and the lobby creates rooms through `<launcher>/room/<name>`. Each container
+reports its rooms to a second Dict, and the lobby lists rooms from every container
+through `<launcher>/rooms`.
 
 Check routing with `modal run -m src.app`.
 """
@@ -24,7 +26,7 @@ import modal
 app = modal.App("curvytron")
 
 CURVYTRON_REPO = "https://github.com/KartikYZ/curvytron"
-CURVYTRON_COMMIT = "5647a062a137e82221a2448a3a6120eab9589dc9"
+CURVYTRON_COMMIT = "48665a06392da75ed8a64e4667adf484004a47b9"
 CURVYTRON_DIR = "/curvytron"
 
 image = (
@@ -47,6 +49,8 @@ ROOM_IDLE_TIMEOUT = 5 * MINUTES
 ROOM_NAME_MAX_LENGTH = 25
 URI_COMPONENT_SAFE = "!'()*~"
 LOBBY_KEY = ("lobby",)
+ROOM_REPORT_INTERVAL = 3
+ROOM_REPORT_TTL = 15
 
 
 @app.server(
@@ -66,14 +70,38 @@ class Curvytron:
     def start(self):
         import os
         import subprocess
+        import threading
 
         env = {**os.environ, "CURVYTRON_LAUNCHER_URL": ui.get_web_url()}
         self.process = subprocess.Popen(["npm", "start"], cwd=CURVYTRON_DIR, env=env)
+        threading.Thread(target=self.report_rooms, daemon=True).start()
+
+    def report_rooms(self):
+        import json
+        import os
+        import time
+        import urllib.request
+
+        while True:
+            time.sleep(ROOM_REPORT_INTERVAL)
+            try:
+                with urllib.request.urlopen(f"http://localhost:{PORT}/rooms", timeout=2) as resp:
+                    listed = json.load(resp)
+                room_reports.put(os.environ["MODAL_TASK_ID"], {"rooms": listed, "updated": time.time()})
+            except Exception as exc:
+                print(f"Could not report rooms: {exc}")
+
+    @modal.exit()
+    def stop(self):
+        import os
+
+        room_reports.pop(os.environ["MODAL_TASK_ID"], None)
 
 
 launcher_image = modal.Image.debian_slim(python_version="3.12").uv_pip_install("fastapi[standard]==0.116.1")
 
 rooms = modal.Dict.from_name("curvytron-rooms", create_if_missing=True)
+room_reports = modal.Dict.from_name("curvytron-room-reports", create_if_missing=True)
 
 
 @app.function(image=launcher_image)
@@ -81,12 +109,13 @@ rooms = modal.Dict.from_name("curvytron-rooms", create_if_missing=True)
 @modal.asgi_app()
 def ui():
     import secrets
+    import time
     from collections.abc import Awaitable, Callable
     from urllib.parse import quote
 
     import httpx
     from fastapi import FastAPI, HTTPException
-    from fastapi.responses import RedirectResponse
+    from fastapi.responses import JSONResponse, RedirectResponse
 
     web_app = FastAPI()
 
@@ -120,8 +149,20 @@ def ui():
             raise HTTPException(status_code=503, detail="Could not open the lobby")
         return RedirectResponse(f"{server_url}/?modal_session_token={token}#/", status_code=303)
 
+    @web_app.get("/rooms")
+    async def list_rooms():
+        listed = {}
+        async for task_id, report in room_reports.items.aio():
+            if time.time() - report["updated"] > ROOM_REPORT_TTL:
+                await room_reports.pop.aio(task_id, None)
+                continue
+            for room in report["rooms"]:
+                listed.setdefault(room["name"], room)
+        headers = {"Access-Control-Allow-Origin": "*", "Cache-Control": "no-store"}
+        return JSONResponse(list(listed.values()), headers=headers)
+
     @web_app.get("/room/{room:path}")
-    async def join_room(room: str):
+    async def join_room(room: str, password: str | None = None):
         room = room[:ROOM_NAME_MAX_LENGTH].strip() or f"room-{secrets.token_hex(3)}"
         server_url = await Curvytron.get_url.aio()
         room_url = f"{server_url}/rooms/{quote(room, safe='')}"
@@ -129,6 +170,8 @@ def ui():
         if token is None:
             raise HTTPException(status_code=503, detail="Could not open this room")
         fragment = f"/room/{quote(room, safe=URI_COMPONENT_SAFE)}"
+        if password:
+            fragment += f"?password={quote(password, safe='')}"
         return RedirectResponse(f"{server_url}/?modal_session_token={token}#{fragment}", status_code=303)
 
     return web_app
@@ -137,7 +180,9 @@ def ui():
 @app.local_entrypoint()
 def test():
     """Open the lobby and rooms through the launcher, and check joins share a session that rooms outlive."""
+    import json
     import secrets
+    import time
     import urllib.error
     import urllib.request
     from urllib.parse import parse_qs, quote, urlparse
@@ -191,6 +236,15 @@ def test():
     except urllib.error.HTTPError as exc:
         assert exc.code == 401, f"expected 401 without a session token, got {exc.code}"
     print("Curvytron rejected a request without a session token")
+
+    for _ in range(10):
+        with urllib.request.urlopen(f"{ui.get_web_url()}/rooms") as resp:
+            listed = {r["name"] for r in json.load(resp)}
+        if room in listed and spaced_room in listed:
+            break
+        time.sleep(2)
+    assert room in listed and spaced_room in listed, listed
+    print("The launcher listed both rooms")
 
     Curvytron.sessions.terminate(token)
     _, new_token = join(room)
