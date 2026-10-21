@@ -21,10 +21,28 @@ index 3d661d9..6c89e13 100644
  };
  
 diff --git a/src/client/controller/GameController.js b/src/client/controller/GameController.js
-index f4bdb1a..4a4a212 100644
+index f4bdb1a..2b856d4 100644
 --- a/src/client/controller/GameController.js
 +++ b/src/client/controller/GameController.js
-@@ -153,7 +153,15 @@ GameController.prototype.onFirstRound = function(e)
+@@ -43,6 +43,7 @@ function GameController($scope, $routeParams, $location, client, repository, cha
+     this.$scope.toggleRadio     = this.radio.toggle;
+     this.$scope.avatars         = null;
+     this.$scope.spectating      = false;
++    this.$scope.touch           = false;
+     this.$scope.$parent.profile = false;
+ 
+     var name = decodeURIComponent($routeParams.name);
+@@ -107,6 +108,9 @@ GameController.prototype.loadGame = function(game)
+             if (avatar.input.useGamepad()) {
+                 gamepadListener.start();
+             }
++            if (avatar.input.useTouch()) {
++                this.$scope.touch = true;
++            }
+         }
+     }
+ 
+@@ -153,7 +157,15 @@ GameController.prototype.onFirstRound = function(e)
   */
  GameController.prototype.onMove = function(e)
  {
@@ -42,7 +60,7 @@ index f4bdb1a..4a4a212 100644
  
  /**
 diff --git a/src/client/controller/RoomController.js b/src/client/controller/RoomController.js
-index 67236b3..f114de3 100644
+index 67236b3..6f70a37 100644
 --- a/src/client/controller/RoomController.js
 +++ b/src/client/controller/RoomController.js
 @@ -16,6 +16,18 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
@@ -64,6 +82,15 @@ index 67236b3..f114de3 100644
      var search = $location.search();
  
      this.$location      = $location;
+@@ -29,7 +41,7 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
+     this.password       = typeof(search.password) !== 'undefined' ? search.password : null;
+     this.repository     = repository;
+     this.controlSynchro = false;
+-    this.useTouch       = false;
++    this.useTouch       = this.hasTouch && window.matchMedia('(pointer: coarse)').matches;
+     this.launchInterval = null;
+ 
+     // Binding:
 @@ -55,10 +67,14 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
      this.onLaunchCancel   = this.onLaunchCancel.bind(this);
      this.launch           = this.launch.bind(this);
@@ -674,7 +701,7 @@ index 7224c94..6fa50fa 100644
      for (var i = this.controls.length - 1; i >= 0; i--) {
          this.controls[i].mappers.getById('touch').setValue(touch);
 diff --git a/src/client/model/PlayerInput.js b/src/client/model/PlayerInput.js
-index eb25121..9edc3de 100644
+index eb25121..4f24d42 100644
 --- a/src/client/model/PlayerInput.js
 +++ b/src/client/model/PlayerInput.js
 @@ -31,6 +31,14 @@ PlayerInput.prototype.constructor = PlayerInput;
@@ -795,6 +822,29 @@ index eb25121..9edc3de 100644
              if (tests[t].index === 0 ? x < center : x >= center) {
                  tests[t].result = true;
              }
+@@ -250,6 +289,22 @@ PlayerInput.prototype.useGamepad = function()
+     return false;
+ };
+ 
++/**
++ * Use touch?
++ *
++ * @return {Boolean}
++ */
++PlayerInput.prototype.useTouch = function()
++{
++    for (var i = this.binding.length - 1; i >= 0; i--) {
++        if (PlayerInput.isTouchBinding(this.binding[i])) {
++            return true;
++        }
++    }
++
++    return false;
++};
++
+ /**
+  * Set move
+  *
 diff --git a/src/client/repository/GameRepository.js b/src/client/repository/GameRepository.js
 index b10341b..daebbc6 100644
 --- a/src/client/repository/GameRepository.js
@@ -985,7 +1035,7 @@ index 77e7122..d8044b0 100644
      this.rooms.clear();
  };
 diff --git a/src/client/views/game/play.html b/src/client/views/game/play.html
-index 67f533f..51bdd2a 100644
+index 67f533f..74dd67d 100644
 --- a/src/client/views/game/play.html
 +++ b/src/client/views/game/play.html
 @@ -32,7 +32,7 @@
@@ -997,7 +1047,7 @@ index 67f533f..51bdd2a 100644
              </footer>
  
              <div class="room-chat" ng-controller="ChatController">
-@@ -102,6 +102,7 @@
+@@ -102,9 +102,11 @@
              <div id="render" class="game-render">
                  <canvas id="background" class="game-background"></canvas>
                  <canvas id="bonus" class="game-bonus"></canvas>
@@ -1005,6 +1055,10 @@ index 67f533f..51bdd2a 100644
                  <canvas id="game" class="game-front"></canvas>
                  <canvas id="effect" class="game-effect"></canvas>
              </div>
++            <p class="touch-hint" ng-if="touch">&#9664; Tap left &nbsp;&middot;&nbsp; Tap right &#9654;</p>
+         </div>
+     </section>
+ </section>
 diff --git a/src/client/views/index.html b/src/client/views/index.html
 index d4c645b..1dfe4e1 100644
 --- a/src/client/views/index.html
@@ -1135,7 +1189,7 @@ index 31f11b7..f630c32 100644
              margin-top: 10px;
              margin-bottom: 10px;
 diff --git a/src/sass/pages/_game.scss b/src/sass/pages/_game.scss
-index fa5f2e0..ef09fd0 100644
+index fa5f2e0..35ec325 100644
 --- a/src/sass/pages/_game.scss
 +++ b/src/sass/pages/_game.scss
 @@ -1,4 +1,10 @@
@@ -1149,7 +1203,20 @@ index fa5f2e0..ef09fd0 100644
      position: fixed;
      top: 0;
      right: 0;
-@@ -448,6 +454,12 @@
+@@ -319,6 +325,12 @@
+             z-index: 110;
+         }
+ 
++        .touch-hint {
++            margin-top: 20px;
++            color: #666;
++            font-size: 18px;
++        }
++
+         .countdown {
+             position: absolute;
+             top: 50%;
+@@ -448,6 +460,12 @@
                  display: block;
              }
  
