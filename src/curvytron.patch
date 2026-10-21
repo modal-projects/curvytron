@@ -341,10 +341,10 @@ index d37f477..093c3bf 100644
  };
 diff --git a/src/client/model/AvatarPredictor.js b/src/client/model/AvatarPredictor.js
 new file mode 100644
-index 0000000..16544c9
+index 0000000..4facb51
 --- /dev/null
 +++ b/src/client/model/AvatarPredictor.js
-@@ -0,0 +1,289 @@
+@@ -0,0 +1,303 @@
 +/**
 + * Avatar predictor
 + *
@@ -398,6 +398,13 @@ index 0000000..16544c9
 +AvatarPredictor.prototype.snapDistance = 4;
 +
 +/**
++ * Time (ms) over which the prediction horizon eases in at the start of a round
++ *
++ * @type {Number}
++ */
++AvatarPredictor.prototype.easeIn = 300;
++
++/**
 + * Current time (ms)
 + *
 + * @return {Number}
@@ -413,6 +420,7 @@ index 0000000..16544c9
 +AvatarPredictor.prototype.reset = function()
 +{
 +    this.server = null;
++    this.start  = null;
 +    this.angle  = null;
 +    this.move   = 0;
 +    this.errorX = 0;
@@ -528,8 +536,13 @@ index 0000000..16544c9
 + */
 +AvatarPredictor.prototype.predict = function()
 +{
-+    var now   = this.now(),
-+        state = this.simulate(now, this.avatar.printing),
++    var now   = this.now();
++
++    if (this.start === null) {
++        this.start = now;
++    }
++
++    var state = this.simulate(now, this.avatar.printing),
 +        decay = this.lastTime === null ? 1 : Math.exp(-(now - this.lastTime) / this.smoothing);
 +
 +    this.lastTime = now;
@@ -563,7 +576,8 @@ index 0000000..16544c9
 +    var avatar   = this.avatar,
 +        server   = this.server,
 +        delay    = this.delay || 0,
-+        horizon  = Math.min(now - server.time + delay, this.maxHorizon),
++        ease     = this.start === null ? 0 : Math.min((now - this.start) / this.easeIn, 1),
++        horizon  = Math.min(now - server.time + delay, this.maxHorizon) * ease,
 +        velocity = avatar.velocity / 1000,
 +        x        = server.x,
 +        y        = server.y,
