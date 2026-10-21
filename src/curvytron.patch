@@ -60,7 +60,7 @@ index f4bdb1a..2b856d4 100644
  
  /**
 diff --git a/src/client/controller/RoomController.js b/src/client/controller/RoomController.js
-index 67236b3..6f70a37 100644
+index 67236b3..a8713ef 100644
 --- a/src/client/controller/RoomController.js
 +++ b/src/client/controller/RoomController.js
 @@ -16,6 +16,18 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
@@ -106,7 +106,15 @@ index 67236b3..6f70a37 100644
      this.$scope.launch            = this.launch;
      this.$scope.submitAddPlayer   = this.addPlayer;
      this.$scope.removePlayer      = this.removePlayer;
-@@ -94,6 +110,34 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
+@@ -71,6 +87,7 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
+     this.$scope.nameMaxLength     = Player.prototype.maxLength;
+     this.$scope.colorMaxLength    = Player.prototype.colorMaxLength;
+     this.$scope.hasTouch          = this.hasTouch;
++    this.$scope.touchActive       = this.useTouch;
+     this.$scope.master            = this.repository.amIMaster();
+     this.$scope.displayParameters = false;
+     this.$scope.$parent.profile   = true;
+@@ -94,6 +111,34 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
  RoomController.prototype = Object.create(AbstractController.prototype);
  RoomController.prototype.constructor = RoomController;
  
@@ -141,6 +149,14 @@ index 67236b3..6f70a37 100644
  /**
   * Join room and load scope
   */
+@@ -394,6 +439,7 @@ RoomController.prototype.setTouch = function()
+     if (!this.hasTouch) { return; }
+ 
+     this.useTouch = true;
++    this.$scope.touchActive = true;
+ 
+     var players = this.room.getLocalPlayers();
+ 
 diff --git a/src/client/controller/RoomsController.js b/src/client/controller/RoomsController.js
 index 266f2c9..cfc77ba 100644
 --- a/src/client/controller/RoomsController.js
@@ -1161,7 +1177,7 @@ index ce69e90..91be08e 100644
      </section>
  </section>
 diff --git a/src/client/views/rooms/detail.html b/src/client/views/rooms/detail.html
-index 488d667..f03b948 100644
+index 488d667..49a2cf3 100644
 --- a/src/client/views/rooms/detail.html
 +++ b/src/client/views/rooms/detail.html
 @@ -4,6 +4,7 @@
@@ -1172,6 +1188,71 @@ index 488d667..f03b948 100644
  
          <div id="room-parameters" ng-controller="RoomConfigController" ng-if="displayParameters">
              <ng-include src="'js/views/rooms/parameters.html'"></ng-include>
+@@ -33,7 +34,7 @@
+ 
+         <div class="room-details">
+ 
+-            <div ng-if="hasTouch" class="touch">
++            <div ng-if="hasTouch && !touchActive" class="touch">
+                 <h5>Are you playing on a smartphone? </h5>
+                 <button ng-click="setTouch()" class="btn btn-default">
+                     Activate the touch controls!
+diff --git a/src/sass/helpers/_responsive.scss b/src/sass/helpers/_responsive.scss
+index 5c9adc1..5a82e28 100644
+--- a/src/sass/helpers/_responsive.scss
++++ b/src/sass/helpers/_responsive.scss
+@@ -220,6 +220,51 @@
+             width: 120px;
+         }
+     }
++
++    .room {
++        .invite-link, .start-now {
++            float: left;
++            width: 48%;
++            height: 60px;
++            margin: 0 0 10px;
++            padding: 0;
++            font-size: 18px;
++            font-weight: 300;
++            line-height: 56px;
++            text-transform: uppercase;
++        }
++
++        .start-now {
++            float: right;
++        }
++
++        .top-right-form {
++            clear: both;
++        }
++
++        .room-players {
++            th, td { padding-left: 4px; padding-right: 4px; }
++            th.col-ready { padding-left: 0; }
++
++            .col-remove { width: 20px; min-width: 20px; }
++            .col-keys { width: 92px; white-space: nowrap; }
++            .col-ready { width: 90px; }
++
++            .player-name { padding: 5px; }
++
++            .player-ready {
++                margin: 0 -10px 0 10px;
++                padding: 0 15px 0 10px;
++
++                > span { font-size: 16px; }
++            }
++        }
++
++        .room-chat .chat-wrapper .feed {
++            height: 200px;
++            max-height: 200px;
++        }
++    }
+     body {
+         font-size: 14px;
+         line-height: 20px;
 diff --git a/src/sass/pages/_about.scss b/src/sass/pages/_about.scss
 index 31f11b7..f630c32 100644
 --- a/src/sass/pages/_about.scss
