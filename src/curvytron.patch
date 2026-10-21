@@ -985,9 +985,18 @@ index 77e7122..d8044b0 100644
      this.rooms.clear();
  };
 diff --git a/src/client/views/game/play.html b/src/client/views/game/play.html
-index 67f533f..b035135 100644
+index 67f533f..51bdd2a 100644
 --- a/src/client/views/game/play.html
 +++ b/src/client/views/game/play.html
+@@ -32,7 +32,7 @@
+                 <span id="spectators" ng-if="spectators" class="pull-right">
+                     {{ spectators }} <span class="icon-viewer"></span>
+                 </span>
+-                <a href="http://www.elao.com" class="game-copy pull-left" target="_blank">Handmade by Elao with <i class="icon-love"></i></a>
++                <a href="https://github.com/modal-projects/curvytron" class="game-copy pull-left" target="_blank">Hosted on Modal</a>
+             </footer>
+ 
+             <div class="room-chat" ng-controller="ChatController">
 @@ -102,6 +102,7 @@
              <div id="render" class="game-render">
                  <canvas id="background" class="game-background"></canvas>
