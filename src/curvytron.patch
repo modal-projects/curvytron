@@ -21,7 +21,7 @@ index 3d661d9..6c89e13 100644
  };
  
 diff --git a/src/client/controller/GameController.js b/src/client/controller/GameController.js
-index f4bdb1a..4762f2f 100644
+index f4bdb1a..16fe814 100644
 --- a/src/client/controller/GameController.js
 +++ b/src/client/controller/GameController.js
 @@ -43,6 +43,7 @@ function GameController($scope, $routeParams, $location, client, repository, cha
@@ -42,15 +42,6 @@ index f4bdb1a..4762f2f 100644
          }
      }
  
-@@ -170,7 +174,7 @@ GameController.prototype.onSpectate = function(e)
-  */
- GameController.prototype.onExit = function()
- {
--    if ((this.room && this.$location.path() !== this.room.getUrl()) || (this.game && this.game.started)) {
-+    if ((this.room && this.$location.path() !== this.room.getUrl()) || this.room.game === this.game) {
-         this.repository.parent.leave();
-         this.chat.clear();
-     }
 diff --git a/src/client/controller/RoomController.js b/src/client/controller/RoomController.js
 index 67236b3..a8713ef 100644
 --- a/src/client/controller/RoomController.js
@@ -390,6 +381,18 @@ index eb25121..4f24d42 100644
  /**
   * Set move
   *
+diff --git a/src/client/repository/GameRepository.js b/src/client/repository/GameRepository.js
+index b10341b..2c9cde7 100644
+--- a/src/client/repository/GameRepository.js
++++ b/src/client/repository/GameRepository.js
+@@ -366,6 +366,7 @@ GameRepository.prototype.onSpectate = function(e)
+     var data = e.detail;
+ 
+     this.game.maxScore = data.maxScore;
++    this.game.started = data.started;
+ 
+     for (var i = this.game.avatars.items.length - 1; i >= 0; i--) {
+         this.game.avatars.items[i].local = true;
 diff --git a/src/client/repository/RoomsRepository.js b/src/client/repository/RoomsRepository.js
 index 77e7122..d8044b0 100644
 --- a/src/client/repository/RoomsRepository.js
@@ -765,6 +768,18 @@ index 367ba37..d6f19c0 100644
      .start-now {
          float: right;
          margin-left: 25px;
+diff --git a/src/server/controller/GameController.js b/src/server/controller/GameController.js
+index 8bcf0ab..b88acd4 100644
+--- a/src/server/controller/GameController.js
++++ b/src/server/controller/GameController.js
+@@ -207,6 +207,7 @@ GameController.prototype.attachSpectator = function(client)
+         },
+         events = [['spectate', {
+             inRound: this.game.inRound,
++            started: this.game.started,
+             rendered: this.game.rendered ? true : false,
+             maxScore: this.game.maxScore
+         }]],
 diff --git a/src/server/controller/RoomsController.js b/src/server/controller/RoomsController.js
 index a2f9417..3eab49c 100644
 --- a/src/server/controller/RoomsController.js
