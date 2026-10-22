@@ -21,7 +21,7 @@ index 3d661d9..6c89e13 100644
  };
  
 diff --git a/src/client/controller/GameController.js b/src/client/controller/GameController.js
-index f4bdb1a..16fe814 100644
+index f4bdb1a..4762f2f 100644
 --- a/src/client/controller/GameController.js
 +++ b/src/client/controller/GameController.js
 @@ -43,6 +43,7 @@ function GameController($scope, $routeParams, $location, client, repository, cha
@@ -42,6 +42,15 @@ index f4bdb1a..16fe814 100644
          }
      }
  
+@@ -170,7 +174,7 @@ GameController.prototype.onSpectate = function(e)
+  */
+ GameController.prototype.onExit = function()
+ {
+-    if ((this.room && this.$location.path() !== this.room.getUrl()) || (this.game && this.game.started)) {
++    if ((this.room && this.$location.path() !== this.room.getUrl()) || this.room.game === this.game) {
+         this.repository.parent.leave();
+         this.chat.clear();
+     }
 diff --git a/src/client/controller/RoomController.js b/src/client/controller/RoomController.js
 index 67236b3..a8713ef 100644
 --- a/src/client/controller/RoomController.js
