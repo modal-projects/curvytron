@@ -382,10 +382,80 @@ index eb25121..4f24d42 100644
   * Set move
   *
 diff --git a/src/client/repository/GameRepository.js b/src/client/repository/GameRepository.js
-index b10341b..2c9cde7 100644
+index b10341b..df7fc11 100644
 --- a/src/client/repository/GameRepository.js
 +++ b/src/client/repository/GameRepository.js
-@@ -366,6 +366,7 @@ GameRepository.prototype.onSpectate = function(e)
+@@ -27,6 +27,7 @@ function GameRepository(client, parent, sound, notifier)
+     this.onPosition   = this.onPosition.bind(this);
+     this.onAngle      = this.onAngle.bind(this);
+     this.onPoint      = this.onPoint.bind(this);
++    this.onTrail      = this.onTrail.bind(this);
+     this.onDie        = this.onDie.bind(this);
+     this.onProperty   = this.onProperty.bind(this);
+     this.onRoundNew   = this.onRoundNew.bind(this);
+@@ -74,6 +75,7 @@ GameRepository.prototype.attachEvents = function()
+     this.client.on('position', this.onPosition);
+     this.client.on('angle', this.onAngle);
+     this.client.on('point', this.onPoint);
++    this.client.on('trail', this.onTrail);
+     this.client.on('die', this.onDie);
+     this.client.on('bonus:pop', this.onBonusPop);
+     this.client.on('bonus:clear', this.onBonusClear);
+@@ -98,6 +100,7 @@ GameRepository.prototype.detachEvents = function()
+     this.client.off('position', this.onPosition);
+     this.client.off('angle', this.onAngle);
+     this.client.off('point', this.onPoint);
++    this.client.off('trail', this.onTrail);
+     this.client.off('die', this.onDie);
+     this.client.off('bonus:pop', this.onBonusPop);
+     this.client.off('bonus:clear', this.onBonusClear);
+@@ -212,6 +215,45 @@ GameRepository.prototype.onPoint = function(e)
+     }
+ };
+ 
++/**
++ * On trail
++ *
++ * @param {Event} e
++ */
++GameRepository.prototype.onTrail = function(e)
++{
++    var data = e.detail,
++        avatar = this.game.avatars.getById(data[0]),
++        points = data[1],
++        segment = [],
++        previous = null,
++        radius, previousRadius, x, y, distance, width, i;
++
++    if (!avatar) { return; }
++
++    for (i = 0; i < points.length; i += 3) {
++        x = this.compressor.decompress(points[i]);
++        y = this.compressor.decompress(points[i + 1]);
++        radius = this.compressor.decompress(points[i + 2]);
++
++        if (previous) {
++            distance = Math.sqrt(Math.pow(previous[0] - x, 2) + Math.pow(previous[1] - y, 2));
++
++            if (radius !== previousRadius || distance > radius * 2) {
++                this.game.background.drawLineScaled(segment, width, avatar.color, 'round');
++                segment = [];
++            }
++        }
++
++        segment.push([x, y]);
++        width = radius * 2;
++        previousRadius = radius;
++        previous = [x, y];
++    }
++
++    this.game.background.drawLineScaled(segment, width, avatar.color, 'round');
++};
++
+ /**
+  * On angle
+  *
+@@ -366,6 +408,7 @@ GameRepository.prototype.onSpectate = function(e)
      var data = e.detail;
  
      this.game.maxScore = data.maxScore;
@@ -816,10 +886,10 @@ index 367ba37..d6f19c0 100644
          float: right;
          margin-left: 25px;
 diff --git a/src/server/controller/GameController.js b/src/server/controller/GameController.js
-index 8bcf0ab..b88acd4 100644
+index 8bcf0ab..c9dfa43 100644
 --- a/src/server/controller/GameController.js
 +++ b/src/server/controller/GameController.js
-@@ -207,6 +207,7 @@ GameController.prototype.attachSpectator = function(client)
+@@ -207,10 +207,13 @@ GameController.prototype.attachSpectator = function(client)
          },
          events = [['spectate', {
              inRound: this.game.inRound,
@@ -827,6 +897,65 @@ index 8bcf0ab..b88acd4 100644
              rendered: this.game.rendered ? true : false,
              maxScore: this.game.maxScore
          }]],
+-        avatar, data, bonus, i;
++        bodies = new Collection([], 'id'),
++        trails = new Collection([], 'id'),
++        avatar, data, bonus, body, trail, points, i, j;
+ 
+     for (i = this.game.avatars.items.length - 1; i >= 0; i--) {
+         avatar = this.game.avatars.items[i];
+@@ -218,7 +221,7 @@ GameController.prototype.attachSpectator = function(client)
+ 
+         for (var property in properties) {
+             if (properties.hasOwnProperty(property)) {
+-                events.push(['property', {avatar: avatar.id, property: property, value: avatar[properties[property]]}]);
++                events.push(['property', [avatar.id, property, avatar[properties[property]]]]);
+             }
+         }
+ 
+@@ -227,6 +230,42 @@ GameController.prototype.attachSpectator = function(client)
+         }
+     }
+ 
++    for (i = this.game.world.islands.items.length - 1; i >= 0; i--) {
++        for (j = this.game.world.islands.items[i].bodies.items.length - 1; j >= 0; j--) {
++            body = this.game.world.islands.items[i].bodies.items[j];
++
++            if (!(body instanceof AvatarBody) || !bodies.add(body)) {
++                continue;
++            }
++
++            trail = trails.getById(body.data.id);
++
++            if (!trail) {
++                trail = {id: body.data.id, avatar: body.data, bodies: []};
++                trails.add(trail);
++            }
++
++            trail.bodies.push(body);
++        }
++    }
++
++    for (i = trails.items.length - 1; i >= 0; i--) {
++        trail = trails.items[i];
++        trail.bodies.sort(function (a, b) { return a.num - b.num; });
++        points = [];
++
++        for (j = 0; j < trail.bodies.length; j++) {
++            body = trail.bodies[j];
++            points.push(
++                this.compressor.compress(body.x),
++                this.compressor.compress(body.y),
++                this.compressor.compress(body.radius)
++            );
++        }
++
++        events.push(['trail', [trail.avatar.id, points]]);
++    }
++
+     if (this.game.inRound) {
+         for (i = this.game.bonusManager.bonuses.items.length - 1; i >= 0; i--) {
+             bonus = this.game.bonusManager.bonuses.items[i];
 diff --git a/src/server/controller/RoomsController.js b/src/server/controller/RoomsController.js
 index a2f9417..3eab49c 100644
 --- a/src/server/controller/RoomsController.js
