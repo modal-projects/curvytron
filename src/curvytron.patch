@@ -886,7 +886,7 @@ index 367ba37..d6f19c0 100644
          float: right;
          margin-left: 25px;
 diff --git a/src/server/controller/GameController.js b/src/server/controller/GameController.js
-index 8bcf0ab..a12b841 100644
+index 8bcf0ab..c9dfa43 100644
 --- a/src/server/controller/GameController.js
 +++ b/src/server/controller/GameController.js
 @@ -207,10 +207,13 @@ GameController.prototype.attachSpectator = function(client)
@@ -904,6 +904,15 @@ index 8bcf0ab..a12b841 100644
  
      for (i = this.game.avatars.items.length - 1; i >= 0; i--) {
          avatar = this.game.avatars.items[i];
+@@ -218,7 +221,7 @@ GameController.prototype.attachSpectator = function(client)
+ 
+         for (var property in properties) {
+             if (properties.hasOwnProperty(property)) {
+-                events.push(['property', {avatar: avatar.id, property: property, value: avatar[properties[property]]}]);
++                events.push(['property', [avatar.id, property, avatar[properties[property]]]]);
+             }
+         }
+ 
 @@ -227,6 +230,42 @@ GameController.prototype.attachSpectator = function(client)
          }
      }
