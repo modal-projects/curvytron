@@ -53,6 +53,7 @@ def lobby_url() -> str:
     buffer_containers=BUFFER_CONTAINERS,
     routing_region=REGION,
     compute_region=ASHBURN_METRO,
+    nonpreemptible=True,
     startup_timeout=60,
     scaledown_window=ROOM_SCALEDOWN_WINDOW,
     experimental_options={"queue_timeout": SESSION_QUEUE_TIMEOUT},
