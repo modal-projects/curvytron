@@ -396,7 +396,7 @@ index eb25121..4f24d42 100644
   * Set move
   *
 diff --git a/src/client/repository/GameRepository.js b/src/client/repository/GameRepository.js
-index b10341b..2bf2c94 100644
+index b10341b..8a98519 100644
 --- a/src/client/repository/GameRepository.js
 +++ b/src/client/repository/GameRepository.js
 @@ -27,6 +27,7 @@ function GameRepository(client, parent, sound, notifier)
@@ -504,7 +504,7 @@ index b10341b..2bf2c94 100644
 + */
 +GameRepository.prototype.onJoin = function(e)
 +{
-+    var avatar = this.game.avatars.getById(e.detail);
++    var avatar = this.game.avatars.getById(e.detail[0]);
 +
 +    if (avatar) {
 +        avatar.present = true;
@@ -523,7 +523,7 @@ index b10341b..2bf2c94 100644
      for (var i = this.game.avatars.items.length - 1; i >= 0; i--) {
          this.game.avatars.items[i].local = true;
 diff --git a/src/client/repository/RoomRepository.js b/src/client/repository/RoomRepository.js
-index f7cae8c..9296138 100644
+index f7cae8c..b279b5f 100644
 --- a/src/client/repository/RoomRepository.js
 +++ b/src/client/repository/RoomRepository.js
 @@ -12,6 +12,7 @@ function RoomRepository(client)
@@ -534,31 +534,34 @@ index f7cae8c..9296138 100644
  
      this.start            = this.start.bind(this);
      this.onClientAdd      = this.onClientAdd.bind(this);
-@@ -20,6 +21,7 @@ function RoomRepository(client)
+@@ -20,6 +21,8 @@ function RoomRepository(client)
      this.onJoinRoom       = this.onJoinRoom.bind(this);
      this.onLeaveRoom      = this.onLeaveRoom.bind(this);
      this.onGameStart      = this.onGameStart.bind(this);
++    this.onGameJoin       = this.onGameJoin.bind(this);
 +    this.onGameEnd        = this.onGameEnd.bind(this);
      this.onPlayerReady    = this.onPlayerReady.bind(this);
      this.onPlayerColor    = this.onPlayerColor.bind(this);
      this.onPlayerName     = this.onPlayerName.bind(this);
-@@ -47,6 +49,7 @@ RoomRepository.prototype.attachEvents = function()
+@@ -47,6 +50,8 @@ RoomRepository.prototype.attachEvents = function()
      this.client.on('room:join', this.onJoinRoom);
      this.client.on('room:leave', this.onLeaveRoom);
      this.client.on('room:game:start', this.onGameStart);
++    this.client.on('game:join', this.onGameJoin);
 +    this.client.on('end', this.onGameEnd);
      this.client.on('player:ready', this.onPlayerReady);
      this.client.on('player:color', this.onPlayerColor);
      this.client.on('player:name', this.onPlayerName);
-@@ -73,6 +76,7 @@ RoomRepository.prototype.detachEvents = function()
+@@ -73,6 +78,8 @@ RoomRepository.prototype.detachEvents = function()
      this.client.off('room:join', this.onJoinRoom);
      this.client.off('room:leave', this.onLeaveRoom);
      this.client.off('room:game:start', this.onGameStart);
++    this.client.off('game:join', this.onGameJoin);
 +    this.client.off('end', this.onGameEnd);
      this.client.off('player:ready', this.onPlayerReady);
      this.client.off('player:color', this.onPlayerColor);
      this.client.off('player:name', this.onPlayerName);
-@@ -97,13 +101,24 @@ RoomRepository.prototype.detachEvents = function()
+@@ -97,13 +104,24 @@ RoomRepository.prototype.detachEvents = function()
   */
  RoomRepository.prototype.join = function(name, password, callback)
  {
@@ -585,7 +588,7 @@ index f7cae8c..9296138 100644
          if (result.success) {
              var clients  = repository.createClients(result.clients),
                  master   = clients.getById(result.master),
-@@ -162,19 +177,15 @@ RoomRepository.prototype.createRoom = function(data, clients)
+@@ -162,19 +180,15 @@ RoomRepository.prototype.createRoom = function(data, clients)
          length = data.players.length;
  
      for (var client, i =  0; i < length; i++) {
@@ -614,7 +617,22 @@ index f7cae8c..9296138 100644
      }
  
      room.config.setOpen(data.config.open);
-@@ -433,9 +444,10 @@ RoomRepository.prototype.onClientRemove = function(e)
+@@ -410,7 +424,13 @@ RoomRepository.prototype.launch = function()
+  */
+ RoomRepository.prototype.onClientAdd = function(e)
+ {
+-    this.clients.add(new Client(e.detail));
++    var data   = e.detail,
++        client = data.client || data,
++        id     = typeof(client) === 'object' ? client.id : client;
++
++    if (!this.clients.getById(id)) {
++        this.clients.add(new Client(id, client.active));
++    }
+ };
+ 
+ /**
+@@ -433,9 +453,10 @@ RoomRepository.prototype.onClientRemove = function(e)
  RoomRepository.prototype.onJoinRoom = function(e)
  {
      var data   = e.detail,
@@ -626,10 +644,35 @@ index f7cae8c..9296138 100644
              data.player.name,
              data.player.color,
              data.player.ready
-@@ -607,6 +619,18 @@ RoomRepository.prototype.onGameStart = function(e)
+@@ -607,6 +628,43 @@ RoomRepository.prototype.onGameStart = function(e)
      this.emit('room:game:start');
  };
  
++/**
++ * On game join
++ *
++ * @param {Event} e
++ */
++RoomRepository.prototype.onGameJoin = function(e)
++{
++    var data   = e.detail,
++        player = this.room.players.getById(data[0]),
++        client = this.clients.getById(data[1]) || new Client(data[1]);
++
++    if (!player) {
++        return;
++    }
++
++    if (!this.clients.exists(client)) {
++        this.clients.add(client);
++    }
++
++    player.client.players.remove(player);
++    player.client = client;
++    client.players.add(player);
++    player.position = client.id + '-' + player.id;
++};
++
 +/**
 + * On game end
 + *
@@ -1103,7 +1146,7 @@ index 8bcf0ab..291c33d 100644
  
          this.checkReady();
 diff --git a/src/server/controller/RoomController.js b/src/server/controller/RoomController.js
-index ee8dd6a..cb563a2 100644
+index ee8dd6a..ff7845d 100644
 --- a/src/server/controller/RoomController.js
 +++ b/src/server/controller/RoomController.js
 @@ -130,7 +130,21 @@ RoomController.prototype.detach = function(client)
@@ -1141,7 +1184,7 @@ index ee8dd6a..cb563a2 100644
 +                    player.client = client;
 +                    client.players.add(player);
 +                    player.avatar.present = true;
-+                    this.room.game.controller.socketGroup.addEvent('game:join', player.id);
++                    this.room.game.controller.socketGroup.addEvent('game:join', [player.id, client.id]);
 +                }
 +            }
 +        }
