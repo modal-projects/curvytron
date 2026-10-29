@@ -43,7 +43,7 @@ index f4bdb1a..16fe814 100644
      }
  
 diff --git a/src/client/controller/RoomController.js b/src/client/controller/RoomController.js
-index 67236b3..a8713ef 100644
+index 67236b3..724f348 100644
 --- a/src/client/controller/RoomController.js
 +++ b/src/client/controller/RoomController.js
 @@ -16,6 +16,18 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
@@ -132,7 +132,21 @@ index 67236b3..a8713ef 100644
  /**
   * Join room and load scope
   */
-@@ -394,6 +439,7 @@ RoomController.prototype.setTouch = function()
+@@ -119,6 +164,13 @@ RoomController.prototype.onJoined = function(result)
+         this.$scope.room = this.room;
+ 
+         this.attachEvents();
++
++        for (var i = this.room.players.items.length - 1; i >= 0; i--) {
++            if (this.room.players.items[i].client.id === this.client.id) {
++                this.onJoin({detail: {player: this.room.players.items[i]}});
++            }
++        }
++
+         this.addProfileUser();
+         this.requestDigestScope();
+     } else {
+@@ -394,6 +446,7 @@ RoomController.prototype.setTouch = function()
      if (!this.hasTouch) { return; }
  
      this.useTouch = true;
@@ -382,10 +396,55 @@ index eb25121..4f24d42 100644
   * Set move
   *
 diff --git a/src/client/repository/GameRepository.js b/src/client/repository/GameRepository.js
-index b10341b..2c9cde7 100644
+index b10341b..31c0742 100644
 --- a/src/client/repository/GameRepository.js
 +++ b/src/client/repository/GameRepository.js
-@@ -366,6 +366,7 @@ GameRepository.prototype.onSpectate = function(e)
+@@ -34,6 +34,7 @@ function GameRepository(client, parent, sound, notifier)
+     this.onClear      = this.onClear.bind(this);
+     this.onBorderless = this.onBorderless.bind(this);
+     this.onEnd        = this.onEnd.bind(this);
++    this.onJoin       = this.onJoin.bind(this);
+     this.onLeave      = this.onLeave.bind(this);
+     this.onSpectate   = this.onSpectate.bind(this);
+ }
+@@ -83,6 +84,7 @@ GameRepository.prototype.attachEvents = function()
+     this.client.on('clear', this.onClear);
+     this.client.on('borderless', this.onBorderless);
+     this.client.on('end', this.onEnd);
++    this.client.on('game:join', this.onJoin);
+     this.client.on('game:leave', this.onLeave);
+     this.client.on('spectate', this.onSpectate);
+ };
+@@ -107,6 +109,7 @@ GameRepository.prototype.detachEvents = function()
+     this.client.off('clear', this.onClear);
+     this.client.off('borderless', this.onBorderless);
+     this.client.off('end', this.onEnd);
++    this.client.off('game:join', this.onJoin);
+     this.client.off('game:leave', this.onLeave);
+     this.client.off('spectate', this.onSpectate);
+ };
+@@ -358,6 +361,20 @@ GameRepository.prototype.onLeave = function(e)
+     }
+ };
+ 
++/**
++ * On join
++ *
++ * @param {Event} e
++ */
++GameRepository.prototype.onJoin = function(e)
++{
++    var avatar = this.game.avatars.getById(e.detail);
++
++    if (avatar) {
++        avatar.present = true;
++    }
++};
++
+ /**
+  * On spectate
+  */
+@@ -366,6 +383,7 @@ GameRepository.prototype.onSpectate = function(e)
      var data = e.detail;
  
      this.game.maxScore = data.maxScore;
@@ -394,10 +453,18 @@ index b10341b..2c9cde7 100644
      for (var i = this.game.avatars.items.length - 1; i >= 0; i--) {
          this.game.avatars.items[i].local = true;
 diff --git a/src/client/repository/RoomRepository.js b/src/client/repository/RoomRepository.js
-index f7cae8c..eb06dab 100644
+index f7cae8c..4f635e4 100644
 --- a/src/client/repository/RoomRepository.js
 +++ b/src/client/repository/RoomRepository.js
-@@ -20,6 +20,7 @@ function RoomRepository(client)
+@@ -12,6 +12,7 @@ function RoomRepository(client)
+     this.master      = null;
+     this.clients     = new Collection();
+     this.playerCache = new Collection();
++    this.key         = null;
+ 
+     this.start            = this.start.bind(this);
+     this.onClientAdd      = this.onClientAdd.bind(this);
+@@ -20,6 +21,7 @@ function RoomRepository(client)
      this.onJoinRoom       = this.onJoinRoom.bind(this);
      this.onLeaveRoom      = this.onLeaveRoom.bind(this);
      this.onGameStart      = this.onGameStart.bind(this);
@@ -405,7 +472,7 @@ index f7cae8c..eb06dab 100644
      this.onPlayerReady    = this.onPlayerReady.bind(this);
      this.onPlayerColor    = this.onPlayerColor.bind(this);
      this.onPlayerName     = this.onPlayerName.bind(this);
-@@ -47,6 +48,7 @@ RoomRepository.prototype.attachEvents = function()
+@@ -47,6 +49,7 @@ RoomRepository.prototype.attachEvents = function()
      this.client.on('room:join', this.onJoinRoom);
      this.client.on('room:leave', this.onLeaveRoom);
      this.client.on('room:game:start', this.onGameStart);
@@ -413,7 +480,7 @@ index f7cae8c..eb06dab 100644
      this.client.on('player:ready', this.onPlayerReady);
      this.client.on('player:color', this.onPlayerColor);
      this.client.on('player:name', this.onPlayerName);
-@@ -73,6 +75,7 @@ RoomRepository.prototype.detachEvents = function()
+@@ -73,6 +76,7 @@ RoomRepository.prototype.detachEvents = function()
      this.client.off('room:join', this.onJoinRoom);
      this.client.off('room:leave', this.onLeaveRoom);
      this.client.off('room:game:start', this.onGameStart);
@@ -421,7 +488,34 @@ index f7cae8c..eb06dab 100644
      this.client.off('player:ready', this.onPlayerReady);
      this.client.off('player:color', this.onPlayerColor);
      this.client.off('player:name', this.onPlayerName);
-@@ -607,6 +610,18 @@ RoomRepository.prototype.onGameStart = function(e)
+@@ -97,13 +101,24 @@ RoomRepository.prototype.detachEvents = function()
+  */
+ RoomRepository.prototype.join = function(name, password, callback)
+ {
+-    var repository = this;
++    var repository = this,
++        key;
+ 
+     if (this.room && this.room.name === name) {
+         return callback({success: true, room: repository.room});
+     }
+ 
+-    this.client.addEvent('room:join', {name: name, password: password}, function (result) {
++    try {
++        key = window.localStorage.getItem('curvytron.key');
++        if (!key) {
++            key = Math.random().toString(36).substr(2) + Date.now().toString(36);
++            window.localStorage.setItem('curvytron.key', key);
++        }
++    } catch (e) {
++        key = this.key || (this.key = Math.random().toString(36).substr(2) + Date.now().toString(36));
++    }
++
++    this.client.addEvent('room:join', {name: name, password: password, key: key}, function (result) {
+         if (result.success) {
+             var clients  = repository.createClients(result.clients),
+                 master   = clients.getById(result.master),
+@@ -607,6 +622,18 @@ RoomRepository.prototype.onGameStart = function(e)
      this.emit('room:game:start');
  };
  
@@ -816,7 +910,7 @@ index 367ba37..d6f19c0 100644
          float: right;
          margin-left: 25px;
 diff --git a/src/server/controller/GameController.js b/src/server/controller/GameController.js
-index 8bcf0ab..b88acd4 100644
+index 8bcf0ab..fff13b5 100644
 --- a/src/server/controller/GameController.js
 +++ b/src/server/controller/GameController.js
 @@ -207,6 +207,7 @@ GameController.prototype.attachSpectator = function(client)
@@ -827,19 +921,111 @@ index 8bcf0ab..b88acd4 100644
              rendered: this.game.rendered ? true : false,
              maxScore: this.game.maxScore
          }]],
+@@ -218,7 +219,7 @@ GameController.prototype.attachSpectator = function(client)
+ 
+         for (var property in properties) {
+             if (properties.hasOwnProperty(property)) {
+-                events.push(['property', {avatar: avatar.id, property: property, value: avatar[properties[property]]}]);
++                events.push(['property', [avatar.id, property, avatar[properties[property]]]]);
+             }
+         }
+ 
+@@ -298,7 +299,9 @@ GameController.prototype.stopWaiting = function()
+         var avatars = this.game.getLoadingAvatars();
+ 
+         for (var i = avatars.items.length - 1; i >= 0; i--) {
+-            this.detach(avatars.items[i].player.client);
++            if (avatars.items[i].player.client) {
++                this.detach(avatars.items[i].player.client);
++            }
+         }
+ 
+         this.checkReady();
+diff --git a/src/server/controller/RoomController.js b/src/server/controller/RoomController.js
+index ee8dd6a..cb563a2 100644
+--- a/src/server/controller/RoomController.js
++++ b/src/server/controller/RoomController.js
+@@ -130,7 +130,21 @@ RoomController.prototype.detach = function(client)
+             this.room.game.controller.detach(client);
+         }
+ 
+-        client.clearPlayers();
++        if (this.room.game && client.key && !client.players.isEmpty()) {
++            for (var i = client.players.items.length - 1; i >= 0; i--) {
++                client.players.items[i].client = null;
++                client.players.items[i].key = client.key;
++            }
++            client.players.clear();
++
++            this.kickManager.removeClient(client);
++            if (this.roomMaster && this.roomMaster.id === client.id) {
++                this.removeRoomMaster();
++            }
++        } else {
++            client.clearPlayers();
++        }
++
+         this.detachEvents(client);
+         this.promptCheckForClose();
+         this.socketGroup.addEvent('client:remove', client.id);
+@@ -273,6 +287,19 @@ RoomController.prototype.onClientAdd = function(client)
+     client.clearPlayers();
+ 
+     if (this.room.game) {
++        if (client.key) {
++            for (var player, i = this.room.players.items.length - 1; i >= 0; i--) {
++                player = this.room.players.items[i];
++
++                if (!player.client && player.key === client.key) {
++                    player.client = client;
++                    client.players.add(player);
++                    player.avatar.present = true;
++                    this.room.game.controller.socketGroup.addEvent('game:join', player.id);
++                }
++            }
++        }
++
+         this.room.game.controller.attach(client);
+         client.addEvent('room:game:start');
+     }
+@@ -307,7 +334,8 @@ RoomController.prototype.checkIntegrity = function()
+ {
+     for (var player, i = this.room.players.items.length - 1; i >= 0; i--) {
+         player = this.room.players.items[i];
+-        if (!player.client || !this.clients.exists(player.client)) {
++        if ((!player.client && (!this.room.game || !player.key)) ||
++            (player.client && !this.clients.exists(player.client))) {
+             console.error('"Lost" player removed.');
+             this.removePlayer(player);
+         }
 diff --git a/src/server/controller/RoomsController.js b/src/server/controller/RoomsController.js
-index a2f9417..3eab49c 100644
+index a2f9417..1634d0a 100644
 --- a/src/server/controller/RoomsController.js
 +++ b/src/server/controller/RoomsController.js
-@@ -128,7 +128,7 @@ RoomsController.prototype.onCreateRoom = function(client, data, callback)
+@@ -128,7 +128,9 @@ RoomsController.prototype.onCreateRoom = function(client, data, callback)
   */
  RoomsController.prototype.onJoinRoom = function(client, data, callback)
  {
 -    var room = this.repository.get(data.name);
++    client.key = typeof(data.key) === 'string' ? data.key.substr(0, 64) : null;
++
 +    var room = this.repository.get(data.name) || this.repository.create(data.name);
  
      if (!room) {
          return callback({success: false, error: 'Unknown room "' + data.name + '".'});
+diff --git a/src/server/core/Inspector.js b/src/server/core/Inspector.js
+index a7a9d22..93be0b7 100644
+--- a/src/server/core/Inspector.js
++++ b/src/server/core/Inspector.js
+@@ -166,7 +166,7 @@ Inspector.prototype.onGameNew = function(data)
+     for (var i = game.avatars.items.length - 1; i >= 0; i--) {
+         avatar        = game.avatars.items[i];
+         client        = avatar.player.client;
+-        clientTracker = this.trackers.client.getById(client.id);
++        clientTracker = client ? this.trackers.client.getById(client.id) : null;
+ 
+         if (clientTracker) {
+             this.client.writePoint(
 diff --git a/src/server/core/Server.js b/src/server/core/Server.js
 index 1b7ff44..f0260d0 100644
 --- a/src/server/core/Server.js
@@ -920,6 +1106,44 @@ index 1b7ff44..f0260d0 100644
  /**
   * On socket connection
   *
+diff --git a/src/server/core/SocketClient.js b/src/server/core/SocketClient.js
+index e1e81a1..45919f0 100644
+--- a/src/server/core/SocketClient.js
++++ b/src/server/core/SocketClient.js
+@@ -12,6 +12,7 @@ function SocketClient(socket, interval, ip)
+     this.ip         = ip;
+     this.id         = null;
+     this.active     = true;
++    this.key        = null;
+     this.players    = new Collection([], 'id');
+     this.pingLogger = new PingLogger(this.socket);
+     this.tickrate   = new BaseTickrateLogger();
+diff --git a/src/server/model/Player.js b/src/server/model/Player.js
+index 29c8ed6..e356fe3 100644
+--- a/src/server/model/Player.js
++++ b/src/server/model/Player.js
+@@ -22,7 +22,7 @@ Player.prototype.serialize = function()
+ {
+     var data = BasePlayer.prototype.serialize.call(this);
+ 
+-    data.active = this.client.active;
++    data.active = this.client ? this.client.active : false;
+ 
+     return data;
+ };
+diff --git a/src/shared/model/BasePlayer.js b/src/shared/model/BasePlayer.js
+index 78cf635..c50fde4 100644
+--- a/src/shared/model/BasePlayer.js
++++ b/src/shared/model/BasePlayer.js
+@@ -112,7 +112,7 @@ BasePlayer.prototype.reset = function()
+ BasePlayer.prototype.serialize = function()
+ {
+     return {
+-        client: this.client.id,
++        client: this.client ? this.client.id : null,
+         id: this.id,
+         name: this.name,
+         color: this.color,
 diff --git a/src/vendor/key-mapper.js b/src/vendor/key-mapper.js
 index 8583456..9fd6e03 100644
 --- a/src/vendor/key-mapper.js
