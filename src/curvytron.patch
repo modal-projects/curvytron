@@ -453,7 +453,7 @@ index b10341b..31c0742 100644
      for (var i = this.game.avatars.items.length - 1; i >= 0; i--) {
          this.game.avatars.items[i].local = true;
 diff --git a/src/client/repository/RoomRepository.js b/src/client/repository/RoomRepository.js
-index f7cae8c..4f635e4 100644
+index f7cae8c..9296138 100644
 --- a/src/client/repository/RoomRepository.js
 +++ b/src/client/repository/RoomRepository.js
 @@ -12,6 +12,7 @@ function RoomRepository(client)
@@ -515,7 +515,48 @@ index f7cae8c..4f635e4 100644
          if (result.success) {
              var clients  = repository.createClients(result.clients),
                  master   = clients.getById(result.master),
-@@ -607,6 +622,18 @@ RoomRepository.prototype.onGameStart = function(e)
+@@ -162,19 +177,15 @@ RoomRepository.prototype.createRoom = function(data, clients)
+         length = data.players.length;
+ 
+     for (var client, i =  0; i < length; i++) {
+-        client = clients.getById(data.players[i].client);
+-
+-        if (client) {
+-            room.addPlayer(new Player(
+-                data.players[i].id,
+-                client,
+-                data.players[i].name,
+-                data.players[i].color,
+-                data.players[i].ready
+-            ));
+-        } else {
+-            console.error('Could not find a client:', data.players[i].client, clients);
+-        }
++        client = clients.getById(data.players[i].client) || new Client(data.players[i].client, false);
++
++        room.addPlayer(new Player(
++            data.players[i].id,
++            client,
++            data.players[i].name,
++            data.players[i].color,
++            data.players[i].ready
++        ));
+     }
+ 
+     room.config.setOpen(data.config.open);
+@@ -433,9 +444,10 @@ RoomRepository.prototype.onClientRemove = function(e)
+ RoomRepository.prototype.onJoinRoom = function(e)
+ {
+     var data   = e.detail,
++        client = this.clients.getById(data.player.client) || new Client(data.player.client, false),
+         player = new Player(
+             data.player.id,
+-            this.clients.getById(data.player.client),
++            client,
+             data.player.name,
+             data.player.color,
+             data.player.ready
+@@ -607,6 +619,18 @@ RoomRepository.prototype.onGameStart = function(e)
      this.emit('room:game:start');
  };
  
