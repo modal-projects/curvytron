@@ -695,7 +695,7 @@ index 488d667..49a2cf3 100644
                  <button ng-click="setTouch()" class="btn btn-default">
                      Activate the touch controls!
 diff --git a/src/sass/helpers/_responsive.scss b/src/sass/helpers/_responsive.scss
-index 5c9adc1..5a82e28 100644
+index 5c9adc1..a805a91 100644
 --- a/src/sass/helpers/_responsive.scss
 +++ b/src/sass/helpers/_responsive.scss
 @@ -220,6 +220,51 @@
@@ -750,6 +750,68 @@ index 5c9adc1..5a82e28 100644
      body {
          font-size: 14px;
          line-height: 20px;
+@@ -275,6 +320,61 @@
+ 
+ }
+ 
++@media (max-width: $screen-sm - 1) and (orientation: portrait)
++{
++    #game-wrapper {
++        #game-infos {
++            display: contents;
++
++            > * {
++                display: none !important;
++            }
++
++            .game-players {
++                display: flex !important;
++                flex-wrap: wrap;
++                align-items: center;
++                justify-content: center;
++                top: 0;
++                bottom: auto;
++                width: 100%;
++                height: 15vh;
++                padding: 0 10px;
++                overflow: hidden;
++
++                .player,
++                .player:first-child {
++                    border: 0;
++                    background: none;
++                    padding: 0 0 0 12px;
++                    margin: 4px 10px;
++
++                    .player-name,
++                    .round-points,
++                    .arrow {
++                        display: none;
++                    }
++
++                    .score {
++                        position: static;
++                        width: auto;
++                        line-height: 24px;
++                        font-size: 22px;
++                    }
++                }
++            }
++        }
++
++        #col-right {
++            top: 15vh;
++        }
++
++        .kill-log-wrapper {
++            top: 15vh;
++        }
++    }
++}
++
+ @media (max-width: $screen-md - 1) {
+ 
+ }
 diff --git a/src/sass/pages/_about.scss b/src/sass/pages/_about.scss
 index 31f11b7..f630c32 100644
 --- a/src/sass/pages/_about.scss
