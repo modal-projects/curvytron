@@ -350,7 +350,7 @@ index 8dacd7c..153ccd0 100644
   * Set max score
   */
 diff --git a/src/client/core/Canvas.js b/src/client/core/Canvas.js
-index b92f27b..a9c9641 100644
+index b92f27b..279045a 100644
 --- a/src/client/core/Canvas.js
 +++ b/src/client/core/Canvas.js
 @@ -320,6 +320,55 @@ Canvas.prototype.drawLineScaled = function(points, width, color, style)
@@ -373,7 +373,7 @@ index b92f27b..a9c9641 100644
 +        textWidth,
 +        scaledX = this.round(x * this.scale),
 +        scaledY = this.round(y * this.scale),
-+        offset = this.round(12 * this.scale);
++        offset = this.round(2 * this.scale);
 +
 +    context.save();
 +    context.font = 'bold ' + fontSize + 'px "Lato", "Helvetica Neue", "Helvetica", sans-serif';
