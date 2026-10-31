@@ -349,6 +349,66 @@ index 8dacd7c..153ccd0 100644
  /**
   * Set max score
   */
+diff --git a/src/client/core/Canvas.js b/src/client/core/Canvas.js
+index b92f27b..a9c9641 100644
+--- a/src/client/core/Canvas.js
++++ b/src/client/core/Canvas.js
+@@ -320,6 +320,55 @@ Canvas.prototype.drawLineScaled = function(points, width, color, style)
+     }
+ };
+ 
++/**
++ * Draw text scaled
++ *
++ * @param {String} text
++ * @param {Number} x
++ * @param {Number} y
++ * @param {String} color
++ */
++Canvas.prototype.drawText = function(text, x, y, color)
++{
++    var context = this.context,
++        padding = 2,
++        fontSize = Math.max(12, Math.min(20, 14 * this.element.width / 800)),
++        textWidth,
++        scaledX = this.round(x * this.scale),
++        scaledY = this.round(y * this.scale),
++        offset = this.round(12 * this.scale);
++
++    context.save();
++    context.font = 'bold ' + fontSize + 'px "Lato", "Helvetica Neue", "Helvetica", sans-serif';
++    context.textAlign = 'center';
++    context.textBaseline = 'bottom';
++
++    textWidth = context.measureText(text).width;
++    if (textWidth + padding * 2 > this.element.width) {
++        fontSize *= Math.max(1, this.element.width - padding * 2) / textWidth;
++        context.font = 'bold ' + fontSize + 'px "Lato", "Helvetica Neue", "Helvetica", sans-serif';
++        textWidth = context.measureText(text).width;
++    }
++
++    scaledX = Math.max(
++        textWidth / 2 + padding,
++        Math.min(this.element.width - textWidth / 2 - padding, scaledX)
++    );
++    scaledY -= offset;
++
++    if (scaledY - fontSize < 0) {
++        scaledY = this.round(y * this.scale) + offset + fontSize;
++    }
++
++    context.lineWidth = Math.max(2, fontSize / 8);
++    context.lineJoin = 'round';
++    context.strokeStyle = '#222222';
++    context.strokeText(text, scaledX, scaledY);
++    context.fillStyle = color;
++    context.fillText(text, scaledX, scaledY);
++    context.restore();
++};
++
+ /**
+  * To string
+  *
 diff --git a/src/client/core/SocketClient.js b/src/client/core/SocketClient.js
 index 02c8b56..8a78136 100644
 --- a/src/client/core/SocketClient.js
@@ -371,6 +431,42 @@ index 02c8b56..8a78136 100644
      var Socket = window.MozWebSocket || window.WebSocket;
  
      var protocol = 'ws://';
+diff --git a/src/client/model/Game.js b/src/client/model/Game.js
+index 46a162b..53ea818 100644
+--- a/src/client/model/Game.js
++++ b/src/client/model/Game.js
+@@ -194,8 +194,12 @@ Game.prototype.draw = function(step)
+             this.drawAvatar(avatar);
+             this.drawBonusStack(avatar);
+ 
+-            if (!this.frame && avatar.local) {
+-                this.drawArrow(avatar);
++            if (!this.frame) {
++                this.drawName(avatar);
++
++                if (avatar.local) {
++                    this.drawArrow(avatar);
++                }
+             }
+         }
+     }
+@@ -287,6 +291,16 @@ Game.prototype.drawArrow = function(avatar)
+     this.effect.drawImageScaledAngle(avatar.arrow.element, avatar.x - 5, avatar.y - 5, 10, 10, avatar.angle);
+ };
+ 
++/**
++ * Draw name
++ *
++ * @param {Avatar} avatar
++ */
++Game.prototype.drawName = function(avatar)
++{
++    this.effect.drawText(avatar.name, avatar.x, avatar.y, avatar.color);
++};
++
+ /**
+  * Clear background with color
+  */
 diff --git a/src/client/model/Player.js b/src/client/model/Player.js
 index 7224c94..e55c946 100644
 --- a/src/client/model/Player.js
