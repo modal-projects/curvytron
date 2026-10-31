@@ -873,9 +873,18 @@ index 77e7122..d8044b0 100644
      this.rooms.clear();
  };
 diff --git a/src/client/views/game/play.html b/src/client/views/game/play.html
-index 67f533f..914d487 100644
+index 67f533f..7aea0b9 100644
 --- a/src/client/views/game/play.html
 +++ b/src/client/views/game/play.html
+@@ -2,7 +2,7 @@
+     <section id="game-wrapper">
+         <aside id="game-infos">
+             <header><a href="/#/" class="logo"><img src="images/logo.svg" alt="Curvytron" id="logo" /> Curvytron</a></header>
+-            <div class="maxScore"><i class="icon-trophy"></i><span>{{ game.maxScore }}</span></div>
++            <div class="maxScore" ng-class="{ 'teams': game.teams }"><i class="icon-trophy"></i><span>{{ game.maxScore }}</span></div>
+             <h3 title="{{ ::game.name }}">{{ ::game.name }}</h3>
+ 
+             <span id="sound" class="btn-toggle sound pull-right" ng-class="{ active: sound.active }" ng-click="toggleSound()">
 @@ -12,7 +12,14 @@
                  <i class="icon-radio"></i>
              </span>
@@ -1099,7 +1108,7 @@ index 5e6460b..6ece208 100644
              <h2>Your room is</h2>
              <label class="toggler" ng-class="{ 'active': config.open == true }" id="is-open" ng-click="setOpen(true)">Public</label>
 diff --git a/src/sass/helpers/_responsive.scss b/src/sass/helpers/_responsive.scss
-index 5c9adc1..158afa2 100644
+index 5c9adc1..0e2c84f 100644
 --- a/src/sass/helpers/_responsive.scss
 +++ b/src/sass/helpers/_responsive.scss
 @@ -209,6 +209,16 @@
@@ -1171,7 +1180,7 @@ index 5c9adc1..158afa2 100644
      body {
          font-size: 14px;
          line-height: 20px;
-@@ -275,6 +330,89 @@
+@@ -275,6 +330,107 @@
  
  }
  
@@ -1199,6 +1208,7 @@ index 5c9adc1..158afa2 100644
 +                width: 100%;
 +                height: 15vh;
 +                padding: 0 10px;
++                z-index: auto;
 +                overflow: hidden;
 +
 +                .player,
@@ -1231,16 +1241,33 @@ index 5c9adc1..158afa2 100644
 +                        display: flex;
 +                        flex-wrap: wrap;
 +                        justify-content: center;
++                        position: static;
++                        top: auto;
++                        left: auto;
 +                        width: 100%;
++                        height: auto;
++                        min-height: 28px;
++                        z-index: auto;
++                        grid-template-columns: none;
++                        align-content: normal;
++                        gap: normal;
 +                        padding: 0;
 +                        background: none;
++                        font-size: 13px;
 +
 +                        .team-score {
 +                            margin: 2px 8px;
 +                            font-size: 20px;
++                            gap: 4px;
++                        }
++
++                        .team-swatch {
++                            width: 10px;
++                            height: 10px;
 +                        }
 +
 +                        .team-name {
++                            display: inline;
 +                            font-size: 14px;
 +                        }
 +                    }
@@ -1278,7 +1305,7 @@ index 31f11b7..f630c32 100644
              margin-top: 10px;
              margin-bottom: 10px;
 diff --git a/src/sass/pages/_game.scss b/src/sass/pages/_game.scss
-index fa5f2e0..20dda77 100644
+index fa5f2e0..42627b9 100644
 --- a/src/sass/pages/_game.scss
 +++ b/src/sass/pages/_game.scss
 @@ -1,4 +1,10 @@
@@ -1292,39 +1319,67 @@ index fa5f2e0..20dda77 100644
      position: fixed;
      top: 0;
      right: 0;
-@@ -158,6 +164,31 @@
+@@ -104,6 +110,10 @@
+                 left: 20px;
+             }
+ 
++            &.teams i {
++                display: none;
++            }
++
+             span {
+                 position: absolute;
+                 right: 20px;
+@@ -141,6 +151,10 @@
+             left: 0;
+             width: $aside-width;
+ 
++            &.teams {
++                z-index: 101;
++            }
++
+             &::-webkit-scrollbar {
+                 width: $aside-border-size;
+                 height: 1px;
+@@ -158,6 +172,37 @@
                  cursor: pointer;
              }
  
 +            .team-scores {
-+                display: flex;
++                position: fixed;
++                top: $game-header-height;
++                left: 0;
++                width: 210px;
++                height: 80px;
++                display: grid;
++                grid-template-columns: repeat(2, max-content);
 +                align-items: center;
-+                justify-content: space-around;
-+                min-height: 28px;
-+                padding: 3px 8px;
-+                background: lighten($aside-background, 8%);
-+                font-size: 13px;
++                align-content: center;
++                gap: 2px 22px;
++                padding: 0 20px;
++                background: none;
++                font-size: 22px;
 +
 +                .team-score {
 +                    display: flex;
 +                    align-items: center;
-+                    gap: 4px;
++                    gap: 8px;
 +                }
 +
 +                .team-swatch {
-+                    width: 10px;
-+                    height: 10px;
++                    width: 12px;
++                    height: 12px;
 +                }
 +
 +                .team-name {
-+                    font-size: 11px;
++                    display: none;
 +                }
 +            }
 +
              &.in-round {
                  .player:not(.dead) {
                      .round-points {
-@@ -319,6 +350,12 @@
+@@ -319,6 +364,12 @@
              z-index: 110;
          }
  
@@ -1337,7 +1392,7 @@ index fa5f2e0..20dda77 100644
          .countdown {
              position: absolute;
              top: 50%;
-@@ -559,6 +596,24 @@
+@@ -559,6 +610,24 @@
                          }
                      }
                  }
@@ -1362,6 +1417,11 @@ index fa5f2e0..20dda77 100644
              }
          }
      }
+@@ -750,4 +819,3 @@
+     z-index: 1;
+     @include transition(all 0.25s cubic-bezier(0.785, 0.135, 0.15, 0.86));
+ }
+-
 diff --git a/src/sass/pages/_room.scss b/src/sass/pages/_room.scss
 index 367ba37..14578b0 100644
 --- a/src/sass/pages/_room.scss
