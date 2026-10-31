@@ -562,6 +562,19 @@ index a69dadd..f185a20 100644
  /**
   * Set password
   *
+diff --git a/src/client/model/message/MessageTip.js b/src/client/model/message/MessageTip.js
+index 933ebc6..84632f0 100644
+--- a/src/client/model/message/MessageTip.js
++++ b/src/client/model/message/MessageTip.js
+@@ -35,7 +35,7 @@ MessageTip.prototype.tips = [
+     'Curvytron supports gamepads! Connect it, press A, then setup your controls.',
+     'Yes, you can play Curvytron on your smartphone ;)',
+     'You can add multiple players on the same computer.',
+-    'Green bonuses apply only to you.',
++    'Green bonuses apply to you and your team.',
+     'Red bonuses target your enemies.',
+     'White bonuses affect everyone.',
+     'Making a Snail™ is a sure way to win, but other players might hate you for it.',
 diff --git a/src/client/repository/GameRepository.js b/src/client/repository/GameRepository.js
 index b10341b..7dbb8e2 100644
 --- a/src/client/repository/GameRepository.js
@@ -1821,6 +1834,58 @@ index 1b7ff44..f0260d0 100644
  /**
   * On socket connection
   *
+diff --git a/src/server/model/Bonus/BonusEnemy.js b/src/server/model/Bonus/BonusEnemy.js
+index 69e6a39..676a430 100644
+--- a/src/server/model/Bonus/BonusEnemy.js
++++ b/src/server/model/Bonus/BonusEnemy.js
+@@ -31,7 +31,7 @@ BonusEnemy.prototype.affect = 'enemy';
+  */
+ BonusEnemy.prototype.getTarget = function(avatar, game)
+ {
+-    return game.avatars.filter(function () { return this.alive && !this.equal(avatar); }).items;
++    return game.avatars.filter(function () { return this.alive && !this.equal(avatar) && !(game.teams && this.player.team === avatar.player.team); }).items;
+ };
+ 
+ /**
+diff --git a/src/server/model/Bonus/BonusSelf.js b/src/server/model/Bonus/BonusSelf.js
+index 71fe288..e56e692 100644
+--- a/src/server/model/Bonus/BonusSelf.js
++++ b/src/server/model/Bonus/BonusSelf.js
+@@ -27,11 +27,11 @@ BonusSelf.prototype.affect = 'self';
+  * @param {Avatar} avatar
+  * @param {Game} game
+  *
+- * @return {Object}
++ * @return {Array}
+  */
+ BonusSelf.prototype.getTarget = function(avatar, game)
+ {
+-    return avatar.alive ? avatar : null;
++    return game.avatars.filter(function () { return this.alive && (this.equal(avatar) || (game.teams && this.player.team === avatar.player.team)); }).items;
+ };
+ 
+ /**
+@@ -39,8 +39,8 @@ BonusSelf.prototype.getTarget = function(avatar, game)
+  */
+ BonusSelf.prototype.on = function()
+ {
+-    if (this.target) {
+-        this.target.bonusStack.add(this);
++    for (var i = this.target.length - 1; i >= 0; i--) {
++        this.target[i].bonusStack.add(this);
+     }
+ };
+ 
+@@ -49,7 +49,7 @@ BonusSelf.prototype.on = function()
+  */
+ BonusSelf.prototype.off = function()
+ {
+-    if (this.target) {
+-        this.target.bonusStack.remove(this);
++    for (var i = this.target.length - 1; i >= 0; i--) {
++        this.target[i].bonusStack.remove(this);
+     }
+ };
 diff --git a/src/server/model/Game.js b/src/server/model/Game.js
 index d963cd2..720e8a8 100644
 --- a/src/server/model/Game.js
