@@ -251,22 +251,32 @@ index 266f2c9..cfc77ba 100644
          this.$location.path(room.getUrl());
      } else if (room.password && room.password.match(new RegExp('[0-9]{4}'))) {
 diff --git a/src/client/controller/game/PlayerListController.js b/src/client/controller/game/PlayerListController.js
-index 4c89bce..481bf40 100644
+index 4c89bce..7500088 100644
 --- a/src/client/controller/game/PlayerListController.js
 +++ b/src/client/controller/game/PlayerListController.js
-@@ -89,6 +89,7 @@ PlayerListController.prototype.onScore = function(e)
+@@ -15,6 +15,8 @@ function PlayerListController($scope, $element, client)
+     this.client  = client;
+     this.game    = this.$scope.game;
+ 
++    this.$scope.teamScores = this.game.getTeamScores();
++
+     // Binding
+     this.onScore      = this.onScore.bind(this);
+     this.onRoundScore = this.onRoundScore.bind(this);
+@@ -89,6 +91,8 @@ PlayerListController.prototype.onScore = function(e)
      if (avatar) {
          avatar.setScore(e.detail[1]);
          this.updateScore(avatar);
++        this.$scope.teamScores = this.game.getTeamScores();
 +        this.digestScope();
      }
  };
  
 diff --git a/src/client/controller/game/RoundController.js b/src/client/controller/game/RoundController.js
-index 4b10ae3..8cfe791 100644
+index 4b10ae3..d1df75c 100644
 --- a/src/client/controller/game/RoundController.js
 +++ b/src/client/controller/game/RoundController.js
-@@ -88,9 +88,13 @@ RoundController.prototype.onRoundNew = function(e)
+@@ -88,9 +88,14 @@ RoundController.prototype.onRoundNew = function(e)
   */
  RoundController.prototype.onRoundEnd = function(e)
  {
@@ -279,15 +289,17 @@ index 4b10ae3..8cfe791 100644
 +    this.notifier.notifyInactive(name);
 +
 +    this.$scope.winner = winner ? winner : false;
++    this.$scope.teamScores = this.game.getTeamScores();
      this.digestScope();
  
      this.endElement.style.display = 'block';
-@@ -104,7 +108,7 @@ RoundController.prototype.onRoundEnd = function(e)
+@@ -104,7 +109,8 @@ RoundController.prototype.onRoundEnd = function(e)
  RoundController.prototype.onEnd = function(e)
  {
      this.notifier.notify('Game over!', null, 'win');
 -    this.$scope.winner = this.game.avatars.getFirst();
 +    this.$scope.winner = this.game.teams ? this.game.gameWinner : this.game.avatars.getFirst();
++    this.$scope.teamScores = this.game.getTeamScores();
      this.digestScope();
      this.endElement.style.display = 'block';
  };
@@ -573,7 +585,7 @@ index b10341b..7dbb8e2 100644
      for (var i = this.game.avatars.items.length - 1; i >= 0; i--) {
          this.game.avatars.items[i].local = true;
 diff --git a/src/client/repository/RoomRepository.js b/src/client/repository/RoomRepository.js
-index f7cae8c..072beb7 100644
+index f7cae8c..d12e5d1 100644
 --- a/src/client/repository/RoomRepository.js
 +++ b/src/client/repository/RoomRepository.js
 @@ -20,10 +20,13 @@ function RoomRepository(client)
@@ -636,7 +648,7 @@ index f7cae8c..072beb7 100644
      room.config.setPassword(data.config.password);
      room.config.setMaxScore(data.config.maxScore);
  
-@@ -320,6 +331,17 @@ RoomRepository.prototype.setColor = function(player, color, callback)
+@@ -320,6 +331,21 @@ RoomRepository.prototype.setColor = function(player, color, callback)
      });
  };
  
@@ -648,13 +660,17 @@ index f7cae8c..072beb7 100644
 + */
 +RoomRepository.prototype.setTeam = function(player, team)
 +{
-+    this.client.addEvent('room:team', {player: player.id, team: team});
++    this.client.addEvent('room:team', {player: player.id, team: team}, function (result) {
++        if (!result.success) {
++            console.error('Could not set team %s for player %s', team, player.name);
++        }
++    });
 +};
 +
  /**
   * Set name
   *
-@@ -360,6 +382,17 @@ RoomRepository.prototype.setConfigOpen = function(open, callback)
+@@ -360,6 +386,17 @@ RoomRepository.prototype.setConfigOpen = function(open, callback)
      this.client.addEvent('room:config:open', {open: open ? true : false}, callback);
  };
  
@@ -672,7 +688,7 @@ index f7cae8c..072beb7 100644
  /**
   * Set config max score
   *
-@@ -438,7 +471,8 @@ RoomRepository.prototype.onJoinRoom = function(e)
+@@ -438,7 +475,8 @@ RoomRepository.prototype.onJoinRoom = function(e)
              this.clients.getById(data.player.client),
              data.player.name,
              data.player.color,
@@ -682,7 +698,7 @@ index f7cae8c..072beb7 100644
          );
  
      if (this.room.addPlayer(player)) {
-@@ -496,6 +530,23 @@ RoomRepository.prototype.onPlayerColor = function(e)
+@@ -496,6 +534,23 @@ RoomRepository.prototype.onPlayerColor = function(e)
      }
  };
  
@@ -706,7 +722,7 @@ index f7cae8c..072beb7 100644
  /**
   * On player change name
   *
-@@ -557,6 +608,19 @@ RoomRepository.prototype.onConfigOpen = function(e)
+@@ -557,6 +612,19 @@ RoomRepository.prototype.onConfigOpen = function(e)
      this.emit('room:config:open', {open: data.open, password: data.password});
  };
  
@@ -726,7 +742,7 @@ index f7cae8c..072beb7 100644
  /**
   * On config max score
   *
-@@ -607,6 +671,18 @@ RoomRepository.prototype.onGameStart = function(e)
+@@ -607,6 +675,18 @@ RoomRepository.prototype.onGameStart = function(e)
      this.emit('room:game:start');
  };
  
@@ -857,7 +873,7 @@ index 77e7122..d8044b0 100644
      this.rooms.clear();
  };
 diff --git a/src/client/views/game/play.html b/src/client/views/game/play.html
-index 67f533f..88590a7 100644
+index 67f533f..914d487 100644
 --- a/src/client/views/game/play.html
 +++ b/src/client/views/game/play.html
 @@ -12,7 +12,14 @@
@@ -867,7 +883,7 @@ index 67f533f..88590a7 100644
 -            <div class="game-players" ng-controller="PlayerListController">
 +            <div class="game-players" ng-controller="PlayerListController" ng-class="{ 'teams': game.teams }">
 +                <div class="team-scores" ng-if="game.teams">
-+                    <div class="team-score" ng-repeat="team in game.getTeamScores() track by team.team">
++                    <div class="team-score" ng-repeat="team in teamScores track by team.team">
 +                        <span class="team-swatch" style="background-color: {{ team.color }};"></span>
 +                        <span class="team-name" style="color: {{ team.color }};">{{ team.name }}</span>
 +                        <strong>{{ team.score }}</strong>
@@ -891,7 +907,7 @@ index 67f533f..88590a7 100644
                              <i class="icon-trophy"></i>
 -                            <span class="strong" style="color: {{ winner.color }}">
 +                            <span class="strong" ng-if="game.teams" style="color: {{ winner.player.teamColors[winner.player.team] }}">
-+                                {{ winner.player.teamNames[winner.player.team] }} team
++                                {{ winner.player.teamNames[winner.player.team] }}<span class="team-word"> team</span>
 +                            </span>
 +                            <span class="strong" ng-if="!game.teams" style="color: {{ winner.color }}">
                                  {{ winner.name }}
@@ -902,7 +918,7 @@ index 67f533f..88590a7 100644
                                  Back to the room
                              </button>
 +                            <div class="team-scores recap-team-scores" ng-if="game.teams">
-+                                <div class="team-score" ng-repeat="team in game.getTeamScores() track by team.team">
++                                <div class="team-score" ng-repeat="team in teamScores track by team.team">
 +                                    <span class="team-swatch" style="background-color: {{ team.color }};"></span>
 +                                    <span class="team-name" style="color: {{ team.color }};">{{ team.name }}</span>
 +                                    <strong>{{ team.score }}</strong>
@@ -1083,7 +1099,7 @@ index 5e6460b..6ece208 100644
              <h2>Your room is</h2>
              <label class="toggler" ng-class="{ 'active': config.open == true }" id="is-open" ng-click="setOpen(true)">Public</label>
 diff --git a/src/sass/helpers/_responsive.scss b/src/sass/helpers/_responsive.scss
-index 5c9adc1..36ad159 100644
+index 5c9adc1..158afa2 100644
 --- a/src/sass/helpers/_responsive.scss
 +++ b/src/sass/helpers/_responsive.scss
 @@ -209,6 +209,16 @@
@@ -1155,12 +1171,16 @@ index 5c9adc1..36ad159 100644
      body {
          font-size: 14px;
          line-height: 20px;
-@@ -275,6 +330,85 @@
+@@ -275,6 +330,89 @@
  
  }
  
 +@media (max-width: $screen-sm - 1) and (orientation: portrait)
 +{
++    #end .victory .team-word {
++        display: none;
++    }
++
 +    #game-wrapper {
 +        #game-infos {
 +            display: contents;
@@ -1957,7 +1977,7 @@ index 97f4634..2a0e453 100644
  
  /**
 diff --git a/src/shared/model/BaseRoomConfig.js b/src/shared/model/BaseRoomConfig.js
-index 47586ea..9e5606b 100644
+index 47586ea..ef6e78a 100644
 --- a/src/shared/model/BaseRoomConfig.js
 +++ b/src/shared/model/BaseRoomConfig.js
 @@ -8,6 +8,7 @@ function BaseRoomConfig(room)
@@ -2058,18 +2078,18 @@ index 47586ea..9e5606b 100644
  /**
   * Variable exists
   *
-@@ -175,6 +259,10 @@ BaseRoomConfig.prototype.getMaxScore = function()
+@@ -175,7 +259,9 @@ BaseRoomConfig.prototype.getMaxScore = function()
   */
  BaseRoomConfig.prototype.getDefaultMaxScore = function()
  {
-+    if (this.teams) {
-+        return 10 * this.getTeamLcm();
-+    }
+-    return Math.max(1, (this.room.players.count() - 1) * 10);
++    var score = Math.max(1, (this.room.players.count() - 1) * 10);
 +
-     return Math.max(1, (this.room.players.count() - 1) * 10);
++    return this.teams ? score * this.getTeamLcm() : score;
  };
  
-@@ -218,6 +306,7 @@ BaseRoomConfig.prototype.serialize = function()
+ /**
+@@ -218,6 +304,7 @@ BaseRoomConfig.prototype.serialize = function()
          variables: this.variables,
          bonuses: this.bonuses,
          open: this.open,
