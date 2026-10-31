@@ -562,6 +562,19 @@ index a69dadd..f185a20 100644
  /**
   * Set password
   *
+diff --git a/src/client/model/message/MessageTip.js b/src/client/model/message/MessageTip.js
+index 933ebc6..84632f0 100644
+--- a/src/client/model/message/MessageTip.js
++++ b/src/client/model/message/MessageTip.js
+@@ -35,7 +35,7 @@ MessageTip.prototype.tips = [
+     'Curvytron supports gamepads! Connect it, press A, then setup your controls.',
+     'Yes, you can play Curvytron on your smartphone ;)',
+     'You can add multiple players on the same computer.',
+-    'Green bonuses apply only to you.',
++    'Green bonuses apply to you and your team.',
+     'Red bonuses target your enemies.',
+     'White bonuses affect everyone.',
+     'Making a Snail™ is a sure way to win, but other players might hate you for it.',
 diff --git a/src/client/repository/GameRepository.js b/src/client/repository/GameRepository.js
 index b10341b..7dbb8e2 100644
 --- a/src/client/repository/GameRepository.js
