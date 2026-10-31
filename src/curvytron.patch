@@ -43,7 +43,7 @@ index f4bdb1a..16fe814 100644
      }
  
 diff --git a/src/client/controller/RoomController.js b/src/client/controller/RoomController.js
-index 67236b3..a8713ef 100644
+index 67236b3..2bfd9ce 100644
 --- a/src/client/controller/RoomController.js
 +++ b/src/client/controller/RoomController.js
 @@ -16,6 +16,18 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
@@ -74,7 +74,15 @@ index 67236b3..a8713ef 100644
      this.launchInterval = null;
  
      // Binding:
-@@ -55,10 +67,14 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
+@@ -43,6 +55,7 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
+     this.joinRoom         = this.joinRoom.bind(this);
+     this.leaveRoom        = this.leaveRoom.bind(this);
+     this.setColor         = this.setColor.bind(this);
++    this.setTeam          = this.setTeam.bind(this);
+     this.setReady         = this.setReady.bind(this);
+     this.setName          = this.setName.bind(this);
+     this.setTouch         = this.setTouch.bind(this);
+@@ -55,15 +68,22 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
      this.onLaunchCancel   = this.onLaunchCancel.bind(this);
      this.launch           = this.launch.bind(this);
      this.start            = this.start.bind(this);
@@ -89,7 +97,15 @@ index 67236b3..a8713ef 100644
      this.$scope.launch            = this.launch;
      this.$scope.submitAddPlayer   = this.addPlayer;
      this.$scope.removePlayer      = this.removePlayer;
-@@ -71,6 +87,7 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
+     this.$scope.kickPlayer        = this.kickPlayer;
+     this.$scope.setColor          = this.setColor;
++    this.$scope.setTeam           = this.setTeam;
++    this.$scope.teamColors        = Player.prototype.teamColors;
++    this.$scope.teamNames         = Player.prototype.teamNames;
+     this.$scope.setReady          = this.setReady;
+     this.$scope.setName           = this.setName;
+     this.$scope.setTouch          = this.setTouch;
+@@ -71,6 +91,7 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
      this.$scope.nameMaxLength     = Player.prototype.maxLength;
      this.$scope.colorMaxLength    = Player.prototype.colorMaxLength;
      this.$scope.hasTouch          = this.hasTouch;
@@ -97,7 +113,7 @@ index 67236b3..a8713ef 100644
      this.$scope.master            = this.repository.amIMaster();
      this.$scope.displayParameters = false;
      this.$scope.$parent.profile   = true;
-@@ -94,6 +111,34 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
+@@ -94,6 +115,34 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
  RoomController.prototype = Object.create(AbstractController.prototype);
  RoomController.prototype.constructor = RoomController;
  
@@ -132,7 +148,40 @@ index 67236b3..a8713ef 100644
  /**
   * Join room and load scope
   */
-@@ -394,6 +439,7 @@ RoomController.prototype.setTouch = function()
+@@ -154,6 +203,7 @@ RoomController.prototype.attachEvents = function()
+     this.repository.on('player:leave', this.requestDigestScope);
+     this.repository.on('player:ready', this.requestDigestScope);
+     this.repository.on('player:color', this.requestDigestScope);
++    this.repository.on('player:team', this.requestDigestScope);
+     this.repository.on('player:name', this.requestDigestScope);
+     this.repository.on('client:activity', this.requestDigestScope);
+     this.repository.on('room:master', this.onRoomMaster);
+@@ -177,6 +227,7 @@ RoomController.prototype.detachEvents = function()
+     this.repository.off('player:leave', this.requestDigestScope);
+     this.repository.off('player:ready', this.requestDigestScope);
+     this.repository.off('player:color', this.requestDigestScope);
++    this.repository.off('player:team', this.requestDigestScope);
+     this.repository.off('player:name', this.requestDigestScope);
+     this.repository.off('client:activity', this.requestDigestScope);
+     this.repository.off('room:master', this.onRoomMaster);
+@@ -332,6 +383,16 @@ RoomController.prototype.setColor = function(player)
+     );
+ };
+ 
++/**
++ * Set player team
++ */
++RoomController.prototype.setTeam = function(player, team)
++{
++    if (player.local && this.room.config.teams) {
++        this.repository.setTeam(player, team);
++    }
++};
++
+ /**
+  * Set player name
+  *
+@@ -394,6 +455,7 @@ RoomController.prototype.setTouch = function()
      if (!this.hasTouch) { return; }
  
      this.useTouch = true;
@@ -201,6 +250,105 @@ index 266f2c9..cfc77ba 100644
      if (room.open) {
          this.$location.path(room.getUrl());
      } else if (room.password && room.password.match(new RegExp('[0-9]{4}'))) {
+diff --git a/src/client/controller/game/PlayerListController.js b/src/client/controller/game/PlayerListController.js
+index 4c89bce..7500088 100644
+--- a/src/client/controller/game/PlayerListController.js
++++ b/src/client/controller/game/PlayerListController.js
+@@ -15,6 +15,8 @@ function PlayerListController($scope, $element, client)
+     this.client  = client;
+     this.game    = this.$scope.game;
+ 
++    this.$scope.teamScores = this.game.getTeamScores();
++
+     // Binding
+     this.onScore      = this.onScore.bind(this);
+     this.onRoundScore = this.onRoundScore.bind(this);
+@@ -89,6 +91,8 @@ PlayerListController.prototype.onScore = function(e)
+     if (avatar) {
+         avatar.setScore(e.detail[1]);
+         this.updateScore(avatar);
++        this.$scope.teamScores = this.game.getTeamScores();
++        this.digestScope();
+     }
+ };
+ 
+diff --git a/src/client/controller/game/RoundController.js b/src/client/controller/game/RoundController.js
+index 4b10ae3..d1df75c 100644
+--- a/src/client/controller/game/RoundController.js
++++ b/src/client/controller/game/RoundController.js
+@@ -88,9 +88,14 @@ RoundController.prototype.onRoundNew = function(e)
+  */
+ RoundController.prototype.onRoundEnd = function(e)
+ {
+-    this.notifier.notifyInactive(this.game.roundWinner ? this.game.roundWinner.name + ' won round!' : 'Round end!');
++    var winner = this.game.roundWinner,
++        name = winner && this.game.teams ? winner.player.teamNames[winner.player.team] + ' team won the round!' :
++            (winner ? winner.name + ' won round!' : 'Round end!');
+ 
+-    this.$scope.winner = this.game.roundWinner ? this.game.roundWinner : false;
++    this.notifier.notifyInactive(name);
++
++    this.$scope.winner = winner ? winner : false;
++    this.$scope.teamScores = this.game.getTeamScores();
+     this.digestScope();
+ 
+     this.endElement.style.display = 'block';
+@@ -104,7 +109,8 @@ RoundController.prototype.onRoundEnd = function(e)
+ RoundController.prototype.onEnd = function(e)
+ {
+     this.notifier.notify('Game over!', null, 'win');
+-    this.$scope.winner = this.game.avatars.getFirst();
++    this.$scope.winner = this.game.teams ? this.game.gameWinner : this.game.avatars.getFirst();
++    this.$scope.teamScores = this.game.getTeamScores();
+     this.digestScope();
+     this.endElement.style.display = 'block';
+ };
+diff --git a/src/client/controller/room/RoomConfigController.js b/src/client/controller/room/RoomConfigController.js
+index 8dacd7c..153ccd0 100644
+--- a/src/client/controller/room/RoomConfigController.js
++++ b/src/client/controller/room/RoomConfigController.js
+@@ -16,6 +16,7 @@ function RoomConfigController($scope, repository)
+     this.toggleBonus  = this.toggleBonus.bind(this);
+     this.togglePreset = this.togglePreset.bind(this);
+     this.setOpen      = this.setOpen.bind(this);
++    this.setTeams     = this.setTeams.bind(this);
+     this.setMaxScore  = this.setMaxScore.bind(this);
+     this.setVariable  = this.setVariable.bind(this);
+ 
+@@ -23,10 +24,12 @@ function RoomConfigController($scope, repository)
+     this.$scope.toggleBonus  = this.toggleBonus;
+     this.$scope.togglePreset = this.togglePreset;
+     this.$scope.setOpen      = this.setOpen;
++    this.$scope.setTeams     = this.setTeams;
+     this.$scope.setMaxScore  = this.setMaxScore;
+     this.$scope.setVariable  = this.setVariable;
+ 
+     this.repository.on('config:open', this.digestScope);
++    this.repository.on('config:teams', this.digestScope);
+     this.repository.on('config:max-score', this.digestScope);
+     this.repository.on('config:variable', this.digestScope);
+     this.repository.on('config:bonus', this.digestScope);
+@@ -117,6 +120,20 @@ RoomConfigController.prototype.setOpen = function(open)
+     }
+ };
+ 
++/**
++ * Set teams
++ */
++RoomConfigController.prototype.setTeams = function(teams)
++{
++    if (this.repository.amIMaster()) {
++        var config = this.config;
++
++        this.repository.setConfigTeams(teams, function (result) {
++            config.setTeams(result.teams);
++        });
++    }
++};
++
+ /**
+  * Set max score
+  */
 diff --git a/src/client/core/SocketClient.js b/src/client/core/SocketClient.js
 index 02c8b56..8a78136 100644
 --- a/src/client/core/SocketClient.js
@@ -224,9 +372,21 @@ index 02c8b56..8a78136 100644
  
      var protocol = 'ws://';
 diff --git a/src/client/model/Player.js b/src/client/model/Player.js
-index 7224c94..6fa50fa 100644
+index 7224c94..e55c946 100644
 --- a/src/client/model/Player.js
 +++ b/src/client/model/Player.js
+@@ -7,9 +7,9 @@
+  * @param {String} color
+  * @param {Boolean} ready
+  */
+-function Player(id, client, name, color, ready)
++function Player(id, client, name, color, ready, team)
+ {
+-    BasePlayer.call(this, client, name, color, ready);
++    BasePlayer.call(this, client, name, color, ready, team);
+ 
+     this.id       = id;
+     this.local    = false;
 @@ -76,7 +76,7 @@ Player.prototype.getMapping = function()
   */
  Player.prototype.setTouch = function()
@@ -381,11 +541,42 @@ index eb25121..4f24d42 100644
  /**
   * Set move
   *
+diff --git a/src/client/model/RoomConfig.js b/src/client/model/RoomConfig.js
+index a69dadd..f185a20 100644
+--- a/src/client/model/RoomConfig.js
++++ b/src/client/model/RoomConfig.js
+@@ -66,6 +66,16 @@ RoomConfig.prototype.setOpen = function(open)
+     this.open = open;
+ };
+ 
++/**
++ * Set teams
++ *
++ * @param {Boolean} teams
++ */
++RoomConfig.prototype.setTeams = function(teams)
++{
++    this.teams = teams ? true : false;
++};
++
+ /**
+  * Set password
+  *
 diff --git a/src/client/repository/GameRepository.js b/src/client/repository/GameRepository.js
-index b10341b..2c9cde7 100644
+index b10341b..7dbb8e2 100644
 --- a/src/client/repository/GameRepository.js
 +++ b/src/client/repository/GameRepository.js
-@@ -366,6 +366,7 @@ GameRepository.prototype.onSpectate = function(e)
+@@ -339,6 +339,9 @@ GameRepository.prototype.onBorderless = function(e)
+  */
+ GameRepository.prototype.onEnd = function(e)
+ {
++    if (this.game.teams) {
++        this.game.gameWinner = e.detail ? this.game.avatars.getById(e.detail) : null;
++    }
+     this.game.end();
+     this.sound.play('win');
+     this.emit('end');
+@@ -366,6 +369,7 @@ GameRepository.prototype.onSpectate = function(e)
      var data = e.detail;
  
      this.game.maxScore = data.maxScore;
@@ -394,34 +585,164 @@ index b10341b..2c9cde7 100644
      for (var i = this.game.avatars.items.length - 1; i >= 0; i--) {
          this.game.avatars.items[i].local = true;
 diff --git a/src/client/repository/RoomRepository.js b/src/client/repository/RoomRepository.js
-index f7cae8c..eb06dab 100644
+index f7cae8c..d12e5d1 100644
 --- a/src/client/repository/RoomRepository.js
 +++ b/src/client/repository/RoomRepository.js
-@@ -20,6 +20,7 @@ function RoomRepository(client)
+@@ -20,10 +20,13 @@ function RoomRepository(client)
      this.onJoinRoom       = this.onJoinRoom.bind(this);
      this.onLeaveRoom      = this.onLeaveRoom.bind(this);
      this.onGameStart      = this.onGameStart.bind(this);
 +    this.onGameEnd        = this.onGameEnd.bind(this);
      this.onPlayerReady    = this.onPlayerReady.bind(this);
      this.onPlayerColor    = this.onPlayerColor.bind(this);
++    this.onPlayerTeam     = this.onPlayerTeam.bind(this);
      this.onPlayerName     = this.onPlayerName.bind(this);
-@@ -47,6 +48,7 @@ RoomRepository.prototype.attachEvents = function()
+     this.onConfigOpen     = this.onConfigOpen.bind(this);
++    this.onConfigTeams    = this.onConfigTeams.bind(this);
+     this.onConfigMaxScore = this.onConfigMaxScore.bind(this);
+     this.onConfigVariable = this.onConfigVariable.bind(this);
+     this.onConfigBonus    = this.onConfigBonus.bind(this);
+@@ -47,10 +50,13 @@ RoomRepository.prototype.attachEvents = function()
      this.client.on('room:join', this.onJoinRoom);
      this.client.on('room:leave', this.onLeaveRoom);
      this.client.on('room:game:start', this.onGameStart);
 +    this.client.on('end', this.onGameEnd);
      this.client.on('player:ready', this.onPlayerReady);
      this.client.on('player:color', this.onPlayerColor);
++    this.client.on('player:team', this.onPlayerTeam);
      this.client.on('player:name', this.onPlayerName);
-@@ -73,6 +75,7 @@ RoomRepository.prototype.detachEvents = function()
+     this.client.on('room:config:open', this.onConfigOpen);
++    this.client.on('room:config:teams', this.onConfigTeams);
+     this.client.on('room:config:max-score', this.onConfigMaxScore);
+     this.client.on('room:config:variable', this.onConfigVariable);
+     this.client.on('room:config:bonus', this.onConfigBonus);
+@@ -73,10 +79,13 @@ RoomRepository.prototype.detachEvents = function()
      this.client.off('room:join', this.onJoinRoom);
      this.client.off('room:leave', this.onLeaveRoom);
      this.client.off('room:game:start', this.onGameStart);
 +    this.client.off('end', this.onGameEnd);
      this.client.off('player:ready', this.onPlayerReady);
      this.client.off('player:color', this.onPlayerColor);
++    this.client.off('player:team', this.onPlayerTeam);
      this.client.off('player:name', this.onPlayerName);
-@@ -607,6 +610,18 @@ RoomRepository.prototype.onGameStart = function(e)
+     this.client.off('room:config:open', this.onConfigOpen);
++    this.client.off('room:config:teams', this.onConfigTeams);
+     this.client.off('room:config:max-score', this.onConfigMaxScore);
+     this.client.off('room:config:variable', this.onConfigVariable);
+     this.client.off('room:config:bonus', this.onConfigBonus);
+@@ -170,7 +179,8 @@ RoomRepository.prototype.createRoom = function(data, clients)
+                 client,
+                 data.players[i].name,
+                 data.players[i].color,
+-                data.players[i].ready
++                data.players[i].ready,
++                data.players[i].team
+             ));
+         } else {
+             console.error('Could not find a client:', data.players[i].client, clients);
+@@ -178,6 +188,7 @@ RoomRepository.prototype.createRoom = function(data, clients)
+     }
+ 
+     room.config.setOpen(data.config.open);
++    room.config.setTeams(data.config.teams);
+     room.config.setPassword(data.config.password);
+     room.config.setMaxScore(data.config.maxScore);
+ 
+@@ -320,6 +331,21 @@ RoomRepository.prototype.setColor = function(player, color, callback)
+     });
+ };
+ 
++/**
++ * Set team
++ *
++ * @param {Player} player
++ * @param {Number} team
++ */
++RoomRepository.prototype.setTeam = function(player, team)
++{
++    this.client.addEvent('room:team', {player: player.id, team: team}, function (result) {
++        if (!result.success) {
++            console.error('Could not set team %s for player %s', team, player.name);
++        }
++    });
++};
++
+ /**
+  * Set name
+  *
+@@ -360,6 +386,17 @@ RoomRepository.prototype.setConfigOpen = function(open, callback)
+     this.client.addEvent('room:config:open', {open: open ? true : false}, callback);
+ };
+ 
++/**
++ * Set config teams
++ *
++ * @param {Boolean} teams
++ * @param {Function} callback
++ */
++RoomRepository.prototype.setConfigTeams = function(teams, callback)
++{
++    this.client.addEvent('room:config:teams', {teams: teams ? true : false}, callback);
++};
++
+ /**
+  * Set config max score
+  *
+@@ -438,7 +475,8 @@ RoomRepository.prototype.onJoinRoom = function(e)
+             this.clients.getById(data.player.client),
+             data.player.name,
+             data.player.color,
+-            data.player.ready
++            data.player.ready,
++            data.player.team
+         );
+ 
+     if (this.room.addPlayer(player)) {
+@@ -496,6 +534,23 @@ RoomRepository.prototype.onPlayerColor = function(e)
+     }
+ };
+ 
++/**
++ * On player change team
++ *
++ * @param {Event} e
++ */
++RoomRepository.prototype.onPlayerTeam = function(e)
++{
++    var data = e.detail,
++        player = this.room.players.getById(data.player);
++
++    if (player) {
++        player.team = data.team;
++        player.setColor(data.color);
++        this.emit('player:team', {player: player});
++    }
++};
++
+ /**
+  * On player change name
+  *
+@@ -557,6 +612,19 @@ RoomRepository.prototype.onConfigOpen = function(e)
+     this.emit('room:config:open', {open: data.open, password: data.password});
+ };
+ 
++/**
++ * On config teams
++ *
++ * @param {Event} e
++ */
++RoomRepository.prototype.onConfigTeams = function(e)
++{
++    var data = e.detail;
++
++    this.room.config.setTeams(data.teams);
++    this.emit('config:teams', {teams: data.teams});
++};
++
+ /**
+  * On config max score
+  *
+@@ -607,6 +675,18 @@ RoomRepository.prototype.onGameStart = function(e)
      this.emit('room:game:start');
  };
  
@@ -552,10 +873,26 @@ index 77e7122..d8044b0 100644
      this.rooms.clear();
  };
 diff --git a/src/client/views/game/play.html b/src/client/views/game/play.html
-index 67f533f..a31c934 100644
+index 67f533f..914d487 100644
 --- a/src/client/views/game/play.html
 +++ b/src/client/views/game/play.html
-@@ -32,7 +32,7 @@
+@@ -12,7 +12,14 @@
+                 <i class="icon-radio"></i>
+             </span>
+ 
+-            <div class="game-players" ng-controller="PlayerListController">
++            <div class="game-players" ng-controller="PlayerListController" ng-class="{ 'teams': game.teams }">
++                <div class="team-scores" ng-if="game.teams">
++                    <div class="team-score" ng-repeat="team in teamScores track by team.team">
++                        <span class="team-swatch" style="background-color: {{ team.color }};"></span>
++                        <span class="team-name" style="color: {{ team.color }};">{{ team.name }}</span>
++                        <strong>{{ team.score }}</strong>
++                    </div>
++                </div>
+                 <div ng-repeat="avatar in ::avatars track by avatar.id" id="avatar-{{ ::avatar.id }}" class="player">
+                     <span class="line-color-preview" style="background-color: {{ ::avatar.player.color }};"></span>
+                     <span class="arrow" style="border-left-color: {{ ::avatar.player.color }};" ng-if="avatar.local"></span>
+@@ -32,7 +39,7 @@
                  <span id="spectators" ng-if="spectators" class="pull-right">
                      {{ spectators }} <span class="icon-viewer"></span>
                  </span>
@@ -564,7 +901,33 @@ index 67f533f..a31c934 100644
              </footer>
  
              <div class="room-chat" ng-controller="ChatController">
-@@ -105,6 +105,7 @@
+@@ -70,7 +77,10 @@
+                     <div id="game-view" class="recap-view {{ game.started ? 'round' : 'game' }}">
+                         <p class="victory" ng-if="winner">
+                             <i class="icon-trophy"></i>
+-                            <span class="strong" style="color: {{ winner.color }}">
++                            <span class="strong" ng-if="game.teams" style="color: {{ winner.player.teamColors[winner.player.team] }}">
++                                {{ winner.player.teamNames[winner.player.team] }}<span class="team-word"> team</span>
++                            </span>
++                            <span class="strong" ng-if="!game.teams" style="color: {{ winner.color }}">
+                                 {{ winner.name }}
+                             </span>
+                             won the {{ game.started ? 'round' : 'game' }} !
+@@ -83,6 +93,13 @@
+                             <button ng-click="backToRoom()" type="button" class="btn btn-hero btn-back-to-room">
+                                 Back to the room
+                             </button>
++                            <div class="team-scores recap-team-scores" ng-if="game.teams">
++                                <div class="team-score" ng-repeat="team in teamScores track by team.team">
++                                    <span class="team-swatch" style="background-color: {{ team.color }};"></span>
++                                    <span class="team-name" style="color: {{ team.color }};">{{ team.name }}</span>
++                                    <strong>{{ team.score }}</strong>
++                                </div>
++                            </div>
+                             <table class="table table-hover recap">
+                                 <tbody>
+                                     <tr ng-repeat="avatar in ::avatars track by avatar.id">
+@@ -105,6 +122,7 @@
                  <canvas id="game" class="game-front"></canvas>
                  <canvas id="effect" class="game-effect"></canvas>
              </div>
@@ -674,7 +1037,7 @@ index ce69e90..91be08e 100644
      </section>
  </section>
 diff --git a/src/client/views/rooms/detail.html b/src/client/views/rooms/detail.html
-index 488d667..49a2cf3 100644
+index 488d667..7095f73 100644
 --- a/src/client/views/rooms/detail.html
 +++ b/src/client/views/rooms/detail.html
 @@ -4,6 +4,7 @@
@@ -685,7 +1048,15 @@ index 488d667..49a2cf3 100644
  
          <div id="room-parameters" ng-controller="RoomConfigController" ng-if="displayParameters">
              <ng-include src="'js/views/rooms/parameters.html'"></ng-include>
-@@ -33,7 +34,7 @@
+@@ -13,6 +14,7 @@
+             <span class="label" ng-if="!launching">Start now!</span>
+             <span id="starter-count" ng-if="launching">{{ launching }}</span>
+         </button>
++        <p class="team-start-hint" ng-if="room.config.teams && !room.config.hasEnoughTeams()">Pick at least 2 teams</p>
+ 
+         <form ng-submit="submitAddPlayer()" class="top-right-form" name="addPlayer">
+             <button type="submit" id="submit"><span><i class="icon-plus"></i></span></button>
+@@ -33,7 +35,7 @@
  
          <div class="room-details">
  
@@ -694,11 +1065,61 @@ index 488d667..49a2cf3 100644
                  <h5>Are you playing on a smartphone? </h5>
                  <button ng-click="setTouch()" class="btn btn-default">
                      Activate the touch controls!
+@@ -69,7 +71,10 @@
+                             <input type="text" ng-model="player.name" ng-blur="setName(player)" class="form-control player-name" name="name" maxlength="{{ ::nameMaxLength }}" />
+                         </td>
+                         <td class="col-color">
+-                            <input type="text" colorpicker="hex" colorpicker-position="right" ng-model="player.color" ng-blur="setColor(player)" class="form-control player-color" name="color" placeholder="#CCCCCC" style="border-color: {{ player.color }};" maxlength="{{ ::colorMaxLength }}" />
++                            <div class="team-swatches" ng-if="room.config.teams">
++                                <button type="button" class="team-swatch" ng-repeat="color in ::teamColors track by $index" ng-style="{ 'background-color': color }" ng-class="{ 'selected': player.team == $index }" ng-click="setTeam(player, $index)" title="{{ ::teamNames[$index] }} team"></button>
++                            </div>
++                            <input ng-if="!room.config.teams" type="text" colorpicker="hex" colorpicker-position="right" ng-model="player.color" ng-blur="setColor(player)" class="form-control player-color" name="color" placeholder="#CCCCCC" style="border-color: {{ player.color }};" maxlength="{{ ::colorMaxLength }}" />
+                         </td>
+                         <td class="col-keys">
+                             <button class="btn btn-default control"
+diff --git a/src/client/views/rooms/parameters.html b/src/client/views/rooms/parameters.html
+index 5e6460b..6ece208 100644
+--- a/src/client/views/rooms/parameters.html
++++ b/src/client/views/rooms/parameters.html
+@@ -3,6 +3,16 @@
+         <h2>Victory score</h2>
+         <input type="number" class="form-control" id="max-score" ng-change="setMaxScore(config.maxScore)" ng-model="config.maxScore" placeholder="{{ config.getDefaultMaxScore() }}" maxlength="3" ng-disabled="!master" />
+ 
++        <div class="team-mode">
++            <h2>Game mode</h2>
++            <label class="toggler" ng-class="{ 'active': config.teams == false }" id="is-individual" ng-click="setTeams(false)">Individual</label>
++            <div class="toggle" ng-class="{ 'active': config.teams == true }">
++                <input type="checkbox" id="teams" ng-model="config.teams" ng-change="setTeams(config.teams)" ng-disabled="!master" class="check">
++                <b class="b switch"></b>
++            </div>
++            <label class="toggler" ng-class="{ 'active': config.teams == true }" id="is-teams" ng-click="setTeams(true)">Teams</label>
++        </div>
++
+         <div class="public-room">
+             <h2>Your room is</h2>
+             <label class="toggler" ng-class="{ 'active': config.open == true }" id="is-open" ng-click="setOpen(true)">Public</label>
 diff --git a/src/sass/helpers/_responsive.scss b/src/sass/helpers/_responsive.scss
-index 5c9adc1..a805a91 100644
+index 5c9adc1..158afa2 100644
 --- a/src/sass/helpers/_responsive.scss
 +++ b/src/sass/helpers/_responsive.scss
-@@ -220,6 +220,51 @@
+@@ -209,6 +209,16 @@
+                 width: 0;
+                 padding: 0;
+             }
++
++            .team-swatches {
++                grid-template-columns: repeat(2, 12px);
++                gap: 2px;
++            }
++
++            .team-swatch {
++                width: 12px;
++                height: 12px;
++            }
+         }
+         .col-keys { width: 126px; }
+ 
+@@ -220,6 +230,51 @@
              width: 120px;
          }
      }
@@ -750,12 +1171,16 @@ index 5c9adc1..a805a91 100644
      body {
          font-size: 14px;
          line-height: 20px;
-@@ -275,6 +320,61 @@
+@@ -275,6 +330,89 @@
  
  }
  
 +@media (max-width: $screen-sm - 1) and (orientation: portrait)
 +{
++    #end .victory .team-word {
++        display: none;
++    }
++
 +    #game-wrapper {
 +        #game-infos {
 +            display: contents;
@@ -796,6 +1221,30 @@ index 5c9adc1..a805a91 100644
 +                        font-size: 22px;
 +                    }
 +                }
++
++                &.teams {
++                    .player {
++                        display: none;
++                    }
++
++                    .team-scores {
++                        display: flex;
++                        flex-wrap: wrap;
++                        justify-content: center;
++                        width: 100%;
++                        padding: 0;
++                        background: none;
++
++                        .team-score {
++                            margin: 2px 8px;
++                            font-size: 20px;
++                        }
++
++                        .team-name {
++                            font-size: 14px;
++                        }
++                    }
++                }
 +            }
 +        }
 +
@@ -829,7 +1278,7 @@ index 31f11b7..f630c32 100644
              margin-top: 10px;
              margin-bottom: 10px;
 diff --git a/src/sass/pages/_game.scss b/src/sass/pages/_game.scss
-index fa5f2e0..3a1bdaa 100644
+index fa5f2e0..20dda77 100644
 --- a/src/sass/pages/_game.scss
 +++ b/src/sass/pages/_game.scss
 @@ -1,4 +1,10 @@
@@ -843,7 +1292,39 @@ index fa5f2e0..3a1bdaa 100644
      position: fixed;
      top: 0;
      right: 0;
-@@ -319,6 +325,12 @@
+@@ -158,6 +164,31 @@
+                 cursor: pointer;
+             }
+ 
++            .team-scores {
++                display: flex;
++                align-items: center;
++                justify-content: space-around;
++                min-height: 28px;
++                padding: 3px 8px;
++                background: lighten($aside-background, 8%);
++                font-size: 13px;
++
++                .team-score {
++                    display: flex;
++                    align-items: center;
++                    gap: 4px;
++                }
++
++                .team-swatch {
++                    width: 10px;
++                    height: 10px;
++                }
++
++                .team-name {
++                    font-size: 11px;
++                }
++            }
++
+             &.in-round {
+                 .player:not(.dead) {
+                     .round-points {
+@@ -319,6 +350,12 @@
              z-index: 110;
          }
  
@@ -856,14 +1337,46 @@ index fa5f2e0..3a1bdaa 100644
          .countdown {
              position: absolute;
              top: 50%;
+@@ -559,6 +596,24 @@
+                         }
+                     }
+                 }
++
++                .recap-team-scores {
++                    display: flex;
++                    justify-content: center;
++                    gap: 16px;
++                    margin: 12px 0;
++
++                    .team-score {
++                        display: flex;
++                        align-items: center;
++                        gap: 5px;
++                    }
++
++                    .team-swatch {
++                        width: 12px;
++                        height: 12px;
++                    }
++                }
+             }
+         }
+     }
 diff --git a/src/sass/pages/_room.scss b/src/sass/pages/_room.scss
-index 367ba37..d6f19c0 100644
+index 367ba37..14578b0 100644
 --- a/src/sass/pages/_room.scss
 +++ b/src/sass/pages/_room.scss
-@@ -100,6 +100,16 @@
+@@ -100,6 +100,23 @@
          }
      }
  
++    .team-start-hint {
++        clear: both;
++        margin: 0 0 10px;
++        text-align: right;
++        font-size: 14px;
++    }
++
 +    .invite-link {
 +        border: 2px solid $header-background-from;
 +        @include horizontal-gradient($header-background-from, $header-background-to);
@@ -877,8 +1390,52 @@ index 367ba37..d6f19c0 100644
      .start-now {
          float: right;
          margin-left: 25px;
+@@ -222,6 +239,26 @@
+             border-left-width: 12px;
+         }
+ 
++        .team-swatches {
++            display: grid;
++            grid-template-columns: repeat(4, 16px);
++            gap: 4px;
++            align-items: center;
++        }
++
++        .team-swatch {
++            width: 16px;
++            height: 16px;
++            padding: 0;
++            border: 1px solid rgba(0, 0, 0, 0.35);
++            border-radius: 2px;
++
++            &.selected {
++                outline: 2px solid $text-color;
++                outline-offset: 2px;
++            }
++        }
++
+         p {
+             margin: 0;
+             padding-left: 22px;
+@@ -460,6 +497,16 @@
+             }
+         }
+ 
++        .team-mode {
++            h2 {
++                margin-bottom: 20px;
++            }
++
++            #teams {
++                margin-left: 5px;
++            }
++        }
++
+         .input-range {
+             display: block;
+             width: auto;
 diff --git a/src/server/controller/GameController.js b/src/server/controller/GameController.js
-index 8bcf0ab..b88acd4 100644
+index 8bcf0ab..0959729 100644
 --- a/src/server/controller/GameController.js
 +++ b/src/server/controller/GameController.js
 @@ -207,6 +207,7 @@ GameController.prototype.attachSpectator = function(client)
@@ -889,6 +1446,228 @@ index 8bcf0ab..b88acd4 100644
              rendered: this.game.rendered ? true : false,
              maxScore: this.game.maxScore
          }]],
+@@ -517,6 +518,10 @@ GameController.prototype.onBorderless = function(data)
+  */
+ GameController.prototype.onEnd = function(data)
+ {
+-    this.socketGroup.addEvent('end');
++    if (this.game.teams) {
++        this.socketGroup.addEvent('end', this.game.gameWinner ? this.game.gameWinner.id : null);
++    } else {
++        this.socketGroup.addEvent('end');
++    }
+     this.unloadGame();
+ };
+diff --git a/src/server/controller/RoomController.js b/src/server/controller/RoomController.js
+index ee8dd6a..b318231 100644
+--- a/src/server/controller/RoomController.js
++++ b/src/server/controller/RoomController.js
+@@ -38,10 +38,12 @@ function RoomController(room)
+         onKickVote: function (data) { controller.onKickVote(this, data[0], data[1]); },
+         onName: function (data) { controller.onName(this, data[0], data[1]); },
+         onColor: function (data) { controller.onColor(this, data[0], data[1]); },
++        onTeam: function (data) { controller.onTeam(this, data[0], data[1]); },
+         onLeave: function () { controller.onLeave(this); },
+         onActivity: function () { controller.onActivity(this); },
+ 
+         onConfigOpen: function (data) { controller.onConfigOpen(this, data[0], data[1]); },
++        onConfigTeams: function (data) { controller.onConfigTeams(this, data[0], data[1]); },
+         onConfigMaxScore: function (data) { controller.onConfigMaxScore(this, data[0], data[1]); },
+         onConfigVariable: function (data) { controller.onConfigVariable(this, data[0], data[1]); },
+         onConfigBonus: function (data) { controller.onConfigBonus(this, data[0], data[1]); },
+@@ -155,6 +157,7 @@ RoomController.prototype.attachEvents = function(client)
+     client.on('player:kick', this.callbacks.onKickVote);
+     client.on('room:ready', this.callbacks.onReady);
+     client.on('room:color', this.callbacks.onColor);
++    client.on('room:team', this.callbacks.onTeam);
+     client.on('room:name', this.callbacks.onName);
+     client.on('players:clear', this.onPlayersClear);
+ };
+@@ -175,6 +178,7 @@ RoomController.prototype.detachEvents = function(client)
+     client.removeListener('player:kick', this.callbacks.onKickVote);
+     client.removeListener('room:ready', this.callbacks.onReady);
+     client.removeListener('room:color', this.callbacks.onColor);
++    client.removeListener('room:team', this.callbacks.onTeam);
+     client.removeListener('room:name', this.callbacks.onName);
+     client.removeListener('players:clear', this.onPlayersClear);
+ };
+@@ -225,6 +229,7 @@ RoomController.prototype.setRoomMaster = function(client)
+         this.roomMaster.on('close', this.removeRoomMaster);
+         this.roomMaster.on('room:leave', this.removeRoomMaster);
+         this.roomMaster.on('room:config:open', this.callbacks.onConfigOpen);
++        this.roomMaster.on('room:config:teams', this.callbacks.onConfigTeams);
+         this.roomMaster.on('room:config:max-score', this.callbacks.onConfigMaxScore);
+         this.roomMaster.on('room:config:variable', this.callbacks.onConfigVariable);
+         this.roomMaster.on('room:config:bonus', this.callbacks.onConfigBonus);
+@@ -242,6 +247,7 @@ RoomController.prototype.removeRoomMaster = function()
+         this.roomMaster.removeListener('close', this.removeRoomMaster);
+         this.roomMaster.removeListener('room:leave', this.removeRoomMaster);
+         this.roomMaster.removeListener('room:config:open', this.callbacks.onConfigOpen);
++        this.roomMaster.removeListener('room:config:teams', this.callbacks.onConfigTeams);
+         this.roomMaster.removeListener('room:config:max-score', this.callbacks.onConfigMaxScore);
+         this.roomMaster.removeListener('room:config:variable', this.callbacks.onConfigVariable);
+         this.roomMaster.removeListener('room:config:bonus', this.callbacks.onConfigBonus);
+@@ -319,6 +325,11 @@ RoomController.prototype.checkIntegrity = function()
+  */
+ RoomController.prototype.startLaunch = function()
+ {
++    if (!this.room.config.hasEnoughTeams()) {
++        this.cancelLaunch();
++        return;
++    }
++
+     if (!this.launching) {
+         this.launching = setTimeout(this.launch, this.room.launchTime);
+         this.socketGroup.addEvent('room:launch:start');
+@@ -341,6 +352,11 @@ RoomController.prototype.cancelLaunch = function()
+  */
+ RoomController.prototype.launch = function()
+ {
++    if (!this.room.config.hasEnoughTeams()) {
++        this.cancelLaunch();
++        return;
++    }
++
+     if (this.launching) {
+         this.launching = clearTimeout(this.launching);
+     }
+@@ -416,6 +432,10 @@ RoomController.prototype.onPlayerAdd = function(client, data, callback)
+ 
+     var player = new Player(client, name, color);
+ 
++    if (this.room.config.teams) {
++        this.assignPlayerTeam(player);
++    }
++
+     if (this.room.addPlayer(player)) {
+         client.players.add(player);
+         this.emit('player:add', { room: this.room, player: player});
+@@ -480,6 +500,10 @@ RoomController.prototype.onColor = function(client, data, callback)
+         return callback({success: false});
+     }
+ 
++    if (this.room.config.teams) {
++        return callback({success: false, color: player.color});
++    }
++
+     if (player.setColor(color)) {
+         callback({success: true, color: player.color});
+         this.socketGroup.addEvent('player:color', { player: player.id, color: player.color });
+@@ -488,6 +512,66 @@ RoomController.prototype.onColor = function(client, data, callback)
+     }
+ };
+ 
++/**
++ * Assign a player to the smallest team
++ *
++ * @param {Player} player
++ */
++RoomController.prototype.assignPlayerTeam = function(player)
++{
++    var sizes = [0, 0, 0, 0],
++        players = this.room.players.items,
++        team = 0;
++
++    for (var i = 0; i < players.length; i++) {
++        if (players[i].team !== null && typeof(players[i].team) !== 'undefined') {
++            sizes[players[i].team]++;
++        }
++    }
++
++    for (var index = 1; index < sizes.length; index++) {
++        if (sizes[index] < sizes[team]) {
++            team = index;
++        }
++    }
++
++    player.individualColor = player.color;
++    player.team = team;
++    player.setColor(player.teamColors[team]);
++};
++
++/**
++ * On player change team
++ *
++ * @param {SocketClient} client
++ * @param {Object} data
++ * @param {Function} callback
++ */
++RoomController.prototype.onTeam = function(client, data, callback)
++{
++    var player = client.players.getById(data.player),
++        team = data.team;
++
++    if (!player || !this.room.config.teams || this.room.game || this.launching ||
++        typeof(team) !== 'number' || Math.floor(team) !== team ||
++        team < 0 || team >= player.teamColors.length) {
++        return callback({success: false});
++    }
++
++    player.team = team;
++    player.setColor(player.teamColors[team]);
++    callback({success: true, team: player.team, color: player.color});
++    this.socketGroup.addEvent('player:team', {
++        player: player.id,
++        team: player.team,
++        color: player.color
++    });
++
++    if (this.room.isReady()) {
++        this.launch();
++    }
++};
++
+ /**
+  * On player change name
+  *
+@@ -595,6 +679,47 @@ RoomController.prototype.onConfigOpen = function(client, data, callback)
+     }
+ };
+ 
++/**
++ * On config teams
++ *
++ * @param {SocketClient} client
++ * @param {Object} data
++ * @param {Function} callback
++ */
++RoomController.prototype.onConfigTeams = function(client, data, callback)
++{
++    var success = this.isRoomMaster(client) && !this.room.game && !this.launching &&
++        this.room.config.setTeams(data.teams);
++
++    callback({success: success, teams: this.room.config.teams});
++
++    if (success) {
++        for (var i = 0; i < this.room.players.items.length; i++) {
++            var player = this.room.players.items[i];
++
++            if (this.room.config.teams) {
++                this.assignPlayerTeam(player);
++            } else {
++                player.team = null;
++                player.setColor(player.individualColor);
++                delete player.individualColor;
++            }
++
++            this.socketGroup.addEvent('player:team', {
++                player: player.id,
++                team: player.team,
++                color: player.color
++            });
++        }
++
++        this.socketGroup.addEvent('room:config:teams', {teams: this.room.config.teams});
++
++        if (this.room.isReady()) {
++            this.launch();
++        }
++    }
++};
++
+ /**
+  * On config max score
+  *
 diff --git a/src/server/controller/RoomsController.js b/src/server/controller/RoomsController.js
 index a2f9417..3eab49c 100644
 --- a/src/server/controller/RoomsController.js
@@ -982,6 +1761,342 @@ index 1b7ff44..f0260d0 100644
  /**
   * On socket connection
   *
+diff --git a/src/server/model/Game.js b/src/server/model/Game.js
+index d963cd2..720e8a8 100644
+--- a/src/server/model/Game.js
++++ b/src/server/model/Game.js
+@@ -124,6 +124,41 @@ Game.prototype.onPoint = function(data)
+  */
+ Game.prototype.isWon = function()
+ {
++    if (this.teams) {
++        var presentAvatars = this.getPresentAvatars(),
++            presentTeams = {},
++            teamScores = this.getTeamScores(),
++            highestScore = -1,
++            winningTeam = null,
++            tied = false;
++
++        if (presentAvatars.isEmpty()) { return true; }
++
++        for (var i = 0; i < presentAvatars.items.length; i++) {
++            presentTeams[presentAvatars.items[i].player.team] = true;
++        }
++
++        var presentTeamIds = Object.keys(presentTeams);
++
++        if (presentTeamIds.length <= 1) {
++            return presentAvatars.getFirst();
++        }
++
++        for (i = 0; i < teamScores.length; i++) {
++            if (teamScores[i].score > highestScore) {
++                highestScore = teamScores[i].score;
++                winningTeam = teamScores[i].team;
++                tied = false;
++            } else if (teamScores[i].score === highestScore) {
++                tied = true;
++            }
++        }
++
++        if (highestScore < this.maxScore || tied) { return null; }
++
++        return this.avatars.match(function () { return this.player.team === winningTeam; });
++    }
++
+     var present = this.getPresentAvatars().count();
+ 
+     if (present <= 0) { return true; }
+@@ -154,6 +189,23 @@ Game.prototype.checkRoundEnd = function()
+         return;
+     }
+ 
++    if (this.teams) {
++        var aliveTeam;
++
++        for (var i = 0; i < this.avatars.items.length; i++) {
++            if (!this.avatars.items[i].alive) { continue; }
++
++            if (typeof(aliveTeam) === 'undefined') {
++                aliveTeam = this.avatars.items[i].player.team;
++            } else if (aliveTeam !== this.avatars.items[i].player.team) {
++                return;
++            }
++        }
++
++        this.endRound();
++        return;
++    }
++
+     var alive = false;
+ 
+     for (var i = this.avatars.items.length - 1; i >= 0; i--) {
+@@ -174,6 +226,24 @@ Game.prototype.checkRoundEnd = function()
+  */
+ Game.prototype.resolveScores = function()
+ {
++    if (this.teams) {
++        var alive = this.getAliveAvatars();
++
++        if (!alive.isEmpty()) {
++            this.roundWinner = alive.getFirst();
++
++            for (var i = 0; i < alive.items.length; i++) {
++                alive.items[i].addScore(this.deaths.count());
++            }
++        }
++
++        for (i = this.avatars.items.length - 1; i >= 0; i--) {
++            this.avatars.items[i].resolveScore();
++        }
++
++        return;
++    }
++
+     var winner;
+ 
+     if (this.avatars.count() === 1) {
+diff --git a/src/shared/model/BaseGame.js b/src/shared/model/BaseGame.js
+index f578eda..e730d1d 100644
+--- a/src/shared/model/BaseGame.js
++++ b/src/shared/model/BaseGame.js
+@@ -11,6 +11,20 @@ function BaseGame(room)
+     this.name         = this.room.name;
+     this.frame        = null;
+     this.avatars      = this.room.players.map(function () { return this.getAvatar(); });
++    this.teams        = room.config.teams ? true : false;
++    this.teamSizes    = room.config.getTeamSizes();
++    this.teamMultipliers = [0, 0, 0, 0];
++
++    if (this.teams) {
++        var teamLcm = room.config.getTeamLcm();
++
++        for (var team = 0; team < this.teamSizes.length; team++) {
++            if (this.teamSizes[team]) {
++                this.teamMultipliers[team] = teamLcm / this.teamSizes[team];
++            }
++        }
++    }
++
+     this.size         = this.getSize(this.avatars.count());
+     this.rendered     = null;
+     this.maxScore     = room.config.getMaxScore();
+@@ -291,6 +305,42 @@ BaseGame.prototype.sortAvatars = function(avatars)
+     return avatars;
+ };
+ 
++/**
++ * Get normalized team scores
++ *
++ * @return {Array}
++ */
++BaseGame.prototype.getTeamScores = function()
++{
++    var scores = [0, 0, 0, 0],
++        result = [],
++        avatar, team;
++
++    for (var i = 0; i < this.avatars.items.length; i++) {
++        avatar = this.avatars.items[i];
++        team = avatar.player.team;
++
++        if (team !== null && typeof(team) !== 'undefined') {
++            scores[team] += avatar.score;
++        }
++    }
++
++    for (team = 0; team < this.teamSizes.length; team++) {
++        if (!this.teamSizes[team]) { continue; }
++
++        result.push({
++            team: team,
++            name: BasePlayer.prototype.teamNames[team],
++            color: BasePlayer.prototype.teamColors[team],
++            size: this.teamSizes[team],
++            multiplier: this.teamMultipliers[team],
++            score: scores[team] * this.teamMultipliers[team]
++        });
++    }
++
++    return result;
++};
++
+ /**
+  * Set borderless
+  *
+diff --git a/src/shared/model/BasePlayer.js b/src/shared/model/BasePlayer.js
+index 78cf635..489c553 100644
+--- a/src/shared/model/BasePlayer.js
++++ b/src/shared/model/BasePlayer.js
+@@ -5,7 +5,7 @@
+  * @param {String} name
+  * @param {String} color
+  */
+-function BasePlayer(client, name, color, ready)
++function BasePlayer(client, name, color, ready, team)
+ {
+     EventEmitter.call(this);
+ 
+@@ -13,12 +13,15 @@ function BasePlayer(client, name, color, ready)
+     this.name   = name;
+     this.color  = typeof(color) !== 'undefined' && this.validateColor(color) ? color : this.getRandomColor();
+     this.ready  = typeof(ready) !== 'undefined' && ready;
++    this.team   = typeof(team) === 'number' ? team : null;
+     this.id     = null;
+     this.avatar = null;
+ }
+ 
+ BasePlayer.prototype = Object.create(EventEmitter.prototype);
+ BasePlayer.prototype.constructor = BasePlayer;
++BasePlayer.prototype.teamColors = ['#FF4136', '#2ECC40', '#3D7BFF', '#FFDC00'];
++BasePlayer.prototype.teamNames = ['Red', 'Green', 'Blue', 'Yellow'];
+ 
+ /**
+  * Max length for name
+@@ -116,6 +119,7 @@ BasePlayer.prototype.serialize = function()
+         id: this.id,
+         name: this.name,
+         color: this.color,
++        team: this.team,
+         ready: this.ready
+     };
+ };
+diff --git a/src/shared/model/BaseRoom.js b/src/shared/model/BaseRoom.js
+index 97f4634..2a0e453 100644
+--- a/src/shared/model/BaseRoom.js
++++ b/src/shared/model/BaseRoom.js
+@@ -85,7 +85,9 @@ BaseRoom.prototype.removePlayer = function(player)
+  */
+ BaseRoom.prototype.isReady = function()
+ {
+-    return !this.game && this.players.count() >= this.minPlayer  && this.players.filter(function () { return !this.ready; }).isEmpty();
++    return !this.game && this.players.count() >= this.minPlayer &&
++        this.players.filter(function () { return !this.ready; }).isEmpty() &&
++        this.config.hasEnoughTeams();
+ };
+ 
+ /**
+diff --git a/src/shared/model/BaseRoomConfig.js b/src/shared/model/BaseRoomConfig.js
+index 47586ea..ef6e78a 100644
+--- a/src/shared/model/BaseRoomConfig.js
++++ b/src/shared/model/BaseRoomConfig.js
+@@ -8,6 +8,7 @@ function BaseRoomConfig(room)
+     this.room     = room;
+     this.maxScore = null;
+     this.open     = true;
++    this.teams    = false;
+     this.password = null;
+ 
+     this.variables = {
+@@ -54,6 +55,89 @@ BaseRoomConfig.prototype.setMaxScore = function(maxScore)
+     return true;
+ };
+ 
++/**
++ * Set teams
++ *
++ * @param {Boolean} teams
++ */
++BaseRoomConfig.prototype.setTeams = function(teams)
++{
++    teams = teams ? true : false;
++
++    if (this.teams === teams) { return false; }
++
++    this.teams = teams;
++
++    return true;
++};
++
++/**
++ * Get player counts for each team
++ *
++ * @return {Array}
++ */
++BaseRoomConfig.prototype.getTeamSizes = function()
++{
++    var sizes = [0, 0, 0, 0],
++        players = this.room.players.items;
++
++    for (var i = 0; i < players.length; i++) {
++        if (players[i].team !== null && typeof(players[i].team) !== 'undefined') {
++            sizes[players[i].team]++;
++        }
++    }
++
++    return sizes;
++};
++
++/**
++ * Get the least common multiple of populated team sizes
++ *
++ * @return {Number}
++ */
++BaseRoomConfig.prototype.getTeamLcm = function()
++{
++    var sizes = this.getTeamSizes(),
++        lcm = 1,
++        a, b, remainder;
++
++    for (var team = 0; team < sizes.length; team++) {
++        if (!sizes[team]) { continue; }
++
++        a = lcm;
++        b = sizes[team];
++
++        while (b) {
++            remainder = a % b;
++            a = b;
++            b = remainder;
++        }
++
++        lcm = lcm / a * sizes[team];
++    }
++
++    return lcm;
++};
++
++/**
++ * Check if at least two teams have players
++ *
++ * @return {Boolean}
++ */
++BaseRoomConfig.prototype.hasEnoughTeams = function()
++{
++    if (!this.teams) { return true; }
++
++    var sizes = this.getTeamSizes(),
++        populated = 0;
++
++    for (var team = 0; team < sizes.length; team++) {
++        if (sizes[team]) { populated++; }
++    }
++
++    return populated >= 2;
++};
++
+ /**
+  * Variable exists
+  *
+@@ -175,7 +259,9 @@ BaseRoomConfig.prototype.getMaxScore = function()
+  */
+ BaseRoomConfig.prototype.getDefaultMaxScore = function()
+ {
+-    return Math.max(1, (this.room.players.count() - 1) * 10);
++    var score = Math.max(1, (this.room.players.count() - 1) * 10);
++
++    return this.teams ? score * this.getTeamLcm() : score;
+ };
+ 
+ /**
+@@ -218,6 +304,7 @@ BaseRoomConfig.prototype.serialize = function()
+         variables: this.variables,
+         bonuses: this.bonuses,
+         open: this.open,
++        teams: this.teams,
+         password: this.password
+     };
+ };
 diff --git a/src/vendor/key-mapper.js b/src/vendor/key-mapper.js
 index 8583456..9fd6e03 100644
 --- a/src/vendor/key-mapper.js
