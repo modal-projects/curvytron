@@ -16,6 +16,8 @@ MINUTES = 60
 PORT = 8020
 ROOMS_PER_CONTAINER = 10
 TARGET_ROOMS_PER_CONTAINER = 3
+# AI players run in the room server: roughly 0.1 core each while a round is live.
+ROOM_CPU = 2.0
 MAX_CONTAINERS = 10
 BUFFER_CONTAINERS = 1
 REGION = "us-east"
