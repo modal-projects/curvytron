@@ -6,6 +6,8 @@ CURVYTRON_REPO = "https://github.com/Curvytron/curvytron"
 CURVYTRON_COMMIT = "0051e59b173c244dfe30e539a227b01dc8216186"
 CURVYTRON_DIR = "/curvytron"
 CURVYTRON_PATCH = Path(__file__).with_name("curvytron.patch")
+# AI opponent: observation builder + ONNX policy, loaded by the room server (see README).
+BOT_DIR = Path(__file__).with_name("bot")
 # Custom domain for the lobby, set at deploy time and forwarded to containers through `DOMAIN_ENV`.
 LOBBY_DOMAIN = os.environ.get("CURVYTRON_DOMAIN") or None
 DOMAIN_ENV = {"CURVYTRON_DOMAIN": LOBBY_DOMAIN} if LOBBY_DOMAIN else None

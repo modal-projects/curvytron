@@ -1,0 +1,10 @@
+{
+  "name": "curvyrl-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Server-side Curvytron AI player: observation builder + ONNX policy",
+  "main": "bot.cjs",
+  "dependencies": {
+    "onnxruntime-node": "1.31.1"
+  }
+}
