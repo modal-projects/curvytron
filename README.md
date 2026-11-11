@@ -14,4 +14,4 @@ Additions:
 | | |
 |---|---|
 | ![Team game](docs/screenshots/game-teams.png) | ![Room with AI players](docs/screenshots/room.png) |
-| ![Free-for-all with AI players](docs/screenshots/game-solo.png) | ![Phone](docs/screenshots/phone.png) |
+| ![Free-for-all with AI players](docs/screenshots/game-solo.png) | ![Game end](docs/screenshots/game-end.png) |
