@@ -16,6 +16,7 @@ from .config import (
     MAX_CONTAINERS,
     PORT,
     REGION,
+    ROOM_CPU,
     ROOM_SCALEDOWN_WINDOW,
     ROOMS_PER_CONTAINER,
     SESSION_QUEUE_TIMEOUT,
@@ -45,6 +46,7 @@ def lobby_url() -> str:
 @app.server(
     image=room_image,
     port=PORT,
+    cpu=ROOM_CPU,
     env=DOMAIN_ENV,
     target_concurrency=TARGET_ROOMS_PER_CONTAINER,
     max_concurrency=ROOMS_PER_CONTAINER,
