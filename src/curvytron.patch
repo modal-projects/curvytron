@@ -2925,7 +2925,7 @@ index 71fe288..e56e692 100644
      }
  };
 diff --git a/src/server/model/Game.js b/src/server/model/Game.js
-index d963cd2..1993263 100644
+index d963cd2..4f551b7 100644
 --- a/src/server/model/Game.js
 +++ b/src/server/model/Game.js
 @@ -24,6 +24,8 @@ function Game(room)
@@ -3014,18 +3014,29 @@ index d963cd2..1993263 100644
      var alive = false;
  
      for (var i = this.avatars.items.length - 1; i >= 0; i--) {
-@@ -174,6 +232,24 @@ Game.prototype.checkRoundEnd = function()
+@@ -174,6 +232,35 @@ Game.prototype.checkRoundEnd = function()
   */
  Game.prototype.resolveScores = function()
  {
 +    if (this.teams) {
-+        var alive = this.getAliveAvatars();
++        var alive = this.getAliveAvatars(),
++            survivors, score, i, j, survivor;
 +
 +        if (!alive.isEmpty()) {
 +            this.roundWinner = alive.getFirst();
++            survivors = alive.items.slice();
 +
-+            for (var i = 0; i < alive.items.length; i++) {
-+                alive.items[i].addScore(this.deaths.count());
++            for (i = survivors.length - 1; i > 0; i--) {
++                j = Math.floor(Math.random() * (i + 1));
++                survivor = survivors[i];
++                survivors[i] = survivors[j];
++                survivors[j] = survivor;
++            }
++
++            score = this.deaths.count();
++
++            for (i = 0; i < survivors.length; i++) {
++                survivors[i].addScore(score + i);
 +            }
 +        }
 +
@@ -3039,7 +3050,7 @@ index d963cd2..1993263 100644
      var winner;
  
      if (this.avatars.count() === 1) {
-@@ -230,6 +306,10 @@ Game.prototype.onRoundEnd = function()
+@@ -230,6 +317,10 @@ Game.prototype.onRoundEnd = function()
  Game.prototype.onRoundNew = function()
  {
      this.emit('round:new', {game: this});
