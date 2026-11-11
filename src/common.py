@@ -2,7 +2,15 @@
 
 import modal
 
-from .config import APP_NAME, CURVYTRON_COMMIT, CURVYTRON_DIR, CURVYTRON_PATCH, CURVYTRON_REPO
+from .config import (
+    APP_NAME,
+    BOT_DIR,
+    CURVYTRON_BOT_PATCH,
+    CURVYTRON_COMMIT,
+    CURVYTRON_DIR,
+    CURVYTRON_PATCH,
+    CURVYTRON_REPO,
+)
 
 app = modal.App(APP_NAME)
 
@@ -14,9 +22,13 @@ room_image = (
         f"cd {CURVYTRON_DIR} && git checkout {CURVYTRON_COMMIT}",
     )
     .add_local_file(CURVYTRON_PATCH, f"{CURVYTRON_DIR}/curvytron.patch", copy=True)
+    .add_local_file(CURVYTRON_BOT_PATCH, f"{CURVYTRON_DIR}/curvytron-bot.patch", copy=True)
+    .add_local_dir(BOT_DIR, f"{CURVYTRON_DIR}/bot", copy=True, ignore=["node_modules"])
     .run_commands(
-        f"cd {CURVYTRON_DIR} && git apply curvytron.patch",
+        f"cd {CURVYTRON_DIR} && git apply curvytron.patch && git apply curvytron-bot.patch",
         f"cd {CURVYTRON_DIR} && cp config.json.sample config.json && npm ci && npm run build",
+        # CPU inference only; skip install scripts (they only fetch optional CUDA binaries).
+        f"cd {CURVYTRON_DIR}/bot && npm ci --ignore-scripts",
     )
 )
 

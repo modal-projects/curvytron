@@ -33,3 +33,15 @@ uv run modal deploy -m src.app
 ## Deployment
 
 `.github/workflows/deploy.yml` deploys on every push to `main`, and can also be run manually. It needs the repository secrets `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` for the target workspace. It deploys to the `main` environment unless the repository variable `MODAL_ENVIRONMENT` is set. The lobby is served at `kathir-world-is-better.modal.dev` unless the repository variable `CURVYTRON_DOMAIN` is set; locally, set `CURVYTRON_DOMAIN` when deploying to use a custom domain.
+
+## AI opponent
+
+Rooms can add an AI opponent for 1v1 games: the room master clicks **Play vs AI** while alone in a room, without teams. The AI is a policy trained with PPO self-play in the curvyrl project, exported to ONNX (the overnight CNN, update 4017; 8.4 MB). It runs on the room container's CPU with `onnxruntime-node`, at about 1 ms per decision, so no GPU is needed.
+
+- **`src/bot/`**: the bot. `obs.cjs` builds the policy's observation from the live server game; it is a port of the training env's observation and is parity-tested against it in curvyrl. `bot.cjs` runs the model, deciding every 4 frames as in training and only sending a move when it changes. `model/` holds `model.onnx` plus `meta.json` (observation parameters).
+- **`src/curvytron-bot.patch`**: server and client hooks, applied after `curvytron.patch`.
+  - Adds `room:bot:add` / `room:bot:remove` socket events. The bot is a player owned by the requesting client, so it leaves with them.
+  - `Game` drives bot avatars each frame, and `player:move` from clients is ignored for bot avatars.
+  - Clients get a `bot` flag on players and don't bind controls to them.
+- **Updating the model**: in curvyrl, run `python -m curvyrl.deploy.export CKPT --out <this repo>/src/bot/model`. If the observation code changed, copy `bot.cjs`/`obs.cjs` too.
+- **Smoke test** (local server on :8020): `node bot/smoke.cjs ws://localhost:8020 30000` from the built Curvytron directory. It adds a player that never steers plus the AI, and passes if the AI steers and wins every round.
