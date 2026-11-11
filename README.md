@@ -13,5 +13,5 @@ Additions:
 
 | | |
 |---|---|
-| ![Team game](docs/screenshots/game-teams.png) | ![Room with AI players](docs/screenshots/room.png) |
-| ![Free-for-all with AI players](docs/screenshots/game-solo.png) | ![Game end](docs/screenshots/game-end.png) |
+| ![2v2 team game with bots](docs/screenshots/game-teams.png) | ![Room lobby with AI players](docs/screenshots/room.png) |
+| ![Team-mode room settings with AI players](docs/screenshots/room-settings.png) | ![Three-player game end screen](docs/screenshots/game-end.png) |
