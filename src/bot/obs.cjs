@@ -62,6 +62,7 @@ function props(meta, a) {
 
 function observe(meta, game, avatars, i, t, timeLeft) {
     const size = game.size, P = avatars.length, me = avatars[i];
+    if (P < meta.players) { throw new Error(`the model needs ${meta.players} players, the game has ${P}`); }
     const g = buildGrid(meta, game, avatars);
     const x = me.x, y = me.y, h = me.angle, ch = Math.cos(h), sh = Math.sin(h);
     const ego = (dx, dy) => [dx * ch + dy * sh, -dx * sh + dy * ch];
@@ -109,9 +110,17 @@ function observe(meta, game, avatars, i, t, timeLeft) {
         out.push(...timers);
     }
 
-    // Opponents.
-    for (let k = 1; k < P; k++) {
-        const o = avatars[(i + k) % P];
+    // Opponents. The model sees exactly meta.players - 1 of them; in bigger rooms, use the nearest living ones.
+    let opponents = [];
+    for (let k = 1; k < P; k++) { opponents.push(avatars[(i + k) % P]); }
+    if (opponents.length > meta.players - 1) {
+        opponents = opponents
+            .map((o, k) => ({ o, k, key: (o.alive ? 0 : 1e9) + Math.hypot(o.x - x, o.y - y) }))
+            .sort((p, q) => p.key - q.key || p.k - q.k)
+            .slice(0, meta.players - 1)
+            .map((e) => e.o);
+    }
+    for (const o of opponents) {
         const dx = o.x - x, dy = o.y - y, [f, r] = ego(dx, dy), rel = o.angle - h;
         out.push(o.alive ? 1 : 0, f / size, r / size, Math.hypot(dx, dy) / size, Math.cos(rel), Math.sin(rel), ...props(meta, o));
     }

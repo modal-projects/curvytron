@@ -43,7 +43,7 @@ index f4bdb1a..16fe814 100644
      }
  
 diff --git a/src/client/controller/RoomController.js b/src/client/controller/RoomController.js
-index 67236b3..2bfd9ce 100644
+index 67236b3..68d55c9 100644
 --- a/src/client/controller/RoomController.js
 +++ b/src/client/controller/RoomController.js
 @@ -16,6 +16,18 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
@@ -82,11 +82,14 @@ index 67236b3..2bfd9ce 100644
      this.setReady         = this.setReady.bind(this);
      this.setName          = this.setName.bind(this);
      this.setTouch         = this.setTouch.bind(this);
-@@ -55,15 +68,22 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
+@@ -55,15 +68,28 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
      this.onLaunchCancel   = this.onLaunchCancel.bind(this);
      this.launch           = this.launch.bind(this);
      this.start            = this.start.bind(this);
 +    this.copyInvite       = this.copyInvite.bind(this);
++    this.addBot           = this.addBot.bind(this);
++    this.removeBot        = this.removeBot.bind(this);
++    this.hasBot           = this.hasBot.bind(this);
  
      this.$scope.$on('$destroy', this.leaveRoom);
  
@@ -94,6 +97,9 @@ index 67236b3..2bfd9ce 100644
 +    this.$scope.invite           = !!(window.CURVYTRON_LOBBY && !window.CURVYTRON_LOBBY.isLobby && window.CURVYTRON_LOBBY.url);
 +    this.$scope.inviteCopied     = false;
 +    this.$scope.copyInvite       = this.copyInvite;
++    this.$scope.addBot           = this.addBot;
++    this.$scope.removeBot        = this.removeBot;
++    this.$scope.hasBot           = this.hasBot;
      this.$scope.launch            = this.launch;
      this.$scope.submitAddPlayer   = this.addPlayer;
      this.$scope.removePlayer      = this.removePlayer;
@@ -105,7 +111,7 @@ index 67236b3..2bfd9ce 100644
      this.$scope.setReady          = this.setReady;
      this.$scope.setName           = this.setName;
      this.$scope.setTouch          = this.setTouch;
-@@ -71,6 +91,7 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
+@@ -71,6 +97,7 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
      this.$scope.nameMaxLength     = Player.prototype.maxLength;
      this.$scope.colorMaxLength    = Player.prototype.colorMaxLength;
      this.$scope.hasTouch          = this.hasTouch;
@@ -113,10 +119,44 @@ index 67236b3..2bfd9ce 100644
      this.$scope.master            = this.repository.amIMaster();
      this.$scope.displayParameters = false;
      this.$scope.$parent.profile   = true;
-@@ -94,6 +115,34 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
+@@ -94,6 +121,68 @@ function RoomController($scope, $routeParams, $location, client, repository, pro
  RoomController.prototype = Object.create(AbstractController.prototype);
  RoomController.prototype.constructor = RoomController;
  
++/**
++ * Add the AI opponent (1v1)
++ */
++RoomController.prototype.addBot = function()
++{
++    this.repository.addBot(function (result) {
++        if (!result.success) {
++            console.error('Could not add the AI opponent: %s', result.error);
++        }
++    });
++};
++
++/**
++ * Remove the AI opponent
++ */
++RoomController.prototype.removeBot = function()
++{
++    this.repository.removeBot(function (result) {
++        if (!result.success) {
++            console.error('Could not remove the AI opponent: %s', result.error);
++        }
++    });
++};
++
++/**
++ * Is there an AI opponent in the room?
++ *
++ * @return {Boolean}
++ */
++RoomController.prototype.hasBot = function()
++{
++    return this.room ? this.room.players.items.some(function (player) { return player.bot; }) : false;
++};
++
 +/**
 + * Copy invite link
 + */
@@ -148,7 +188,7 @@ index 67236b3..2bfd9ce 100644
  /**
   * Join room and load scope
   */
-@@ -154,6 +203,7 @@ RoomController.prototype.attachEvents = function()
+@@ -154,6 +243,7 @@ RoomController.prototype.attachEvents = function()
      this.repository.on('player:leave', this.requestDigestScope);
      this.repository.on('player:ready', this.requestDigestScope);
      this.repository.on('player:color', this.requestDigestScope);
@@ -156,7 +196,7 @@ index 67236b3..2bfd9ce 100644
      this.repository.on('player:name', this.requestDigestScope);
      this.repository.on('client:activity', this.requestDigestScope);
      this.repository.on('room:master', this.onRoomMaster);
-@@ -177,6 +227,7 @@ RoomController.prototype.detachEvents = function()
+@@ -177,6 +267,7 @@ RoomController.prototype.detachEvents = function()
      this.repository.off('player:leave', this.requestDigestScope);
      this.repository.off('player:ready', this.requestDigestScope);
      this.repository.off('player:color', this.requestDigestScope);
@@ -164,7 +204,16 @@ index 67236b3..2bfd9ce 100644
      this.repository.off('player:name', this.requestDigestScope);
      this.repository.off('client:activity', this.requestDigestScope);
      this.repository.off('room:master', this.onRoomMaster);
-@@ -332,6 +383,16 @@ RoomController.prototype.setColor = function(player)
+@@ -287,7 +378,7 @@ RoomController.prototype.onJoin = function(e)
+ {
+     var player = e.detail.player;
+ 
+-    if (player.client.id === this.client.id) {
++    if (player.client.id === this.client.id && !player.bot) {
+         player.on('control:change', this.onControlChange);
+         player.setLocal(true);
+ 
+@@ -332,6 +423,16 @@ RoomController.prototype.setColor = function(player)
      );
  };
  
@@ -181,7 +230,7 @@ index 67236b3..2bfd9ce 100644
  /**
   * Set player name
   *
-@@ -394,6 +455,7 @@ RoomController.prototype.setTouch = function()
+@@ -394,6 +495,7 @@ RoomController.prototype.setTouch = function()
      if (!this.hasTouch) { return; }
  
      this.useTouch = true;
@@ -694,7 +743,7 @@ index b10341b..7dbb8e2 100644
      for (var i = this.game.avatars.items.length - 1; i >= 0; i--) {
          this.game.avatars.items[i].local = true;
 diff --git a/src/client/repository/RoomRepository.js b/src/client/repository/RoomRepository.js
-index f7cae8c..d12e5d1 100644
+index f7cae8c..dbdb99b 100644
 --- a/src/client/repository/RoomRepository.js
 +++ b/src/client/repository/RoomRepository.js
 @@ -20,10 +20,13 @@ function RoomRepository(client)
@@ -739,17 +788,31 @@ index f7cae8c..d12e5d1 100644
      this.client.off('room:config:max-score', this.onConfigMaxScore);
      this.client.off('room:config:variable', this.onConfigVariable);
      this.client.off('room:config:bonus', this.onConfigBonus);
-@@ -170,7 +179,8 @@ RoomRepository.prototype.createRoom = function(data, clients)
+@@ -161,23 +170,27 @@ RoomRepository.prototype.createRoom = function(data, clients)
+     var room = new Room(data.name),
+         length = data.players.length;
+ 
+-    for (var client, i =  0; i < length; i++) {
++    for (var client, player, i =  0; i < length; i++) {
+         client = clients.getById(data.players[i].client);
+ 
+         if (client) {
+-            room.addPlayer(new Player(
++            player = new Player(
+                 data.players[i].id,
                  client,
                  data.players[i].name,
                  data.players[i].color,
 -                data.players[i].ready
+-            ));
 +                data.players[i].ready,
 +                data.players[i].team
-             ));
++            );
++            player.bot = data.players[i].bot ? true : false;
++            room.addPlayer(player);
          } else {
              console.error('Could not find a client:', data.players[i].client, clients);
-@@ -178,6 +188,7 @@ RoomRepository.prototype.createRoom = function(data, clients)
+         }
      }
  
      room.config.setOpen(data.config.open);
@@ -757,10 +820,30 @@ index f7cae8c..d12e5d1 100644
      room.config.setPassword(data.config.password);
      room.config.setMaxScore(data.config.maxScore);
  
-@@ -320,6 +331,21 @@ RoomRepository.prototype.setColor = function(player, color, callback)
+@@ -320,6 +333,41 @@ RoomRepository.prototype.setColor = function(player, color, callback)
      });
  };
  
++/**
++ * Add the AI opponent
++ *
++ * @param {Function} callback
++ */
++RoomRepository.prototype.addBot = function(callback)
++{
++    this.client.addEvent('room:bot:add', {}, callback);
++};
++
++/**
++ * Remove the AI opponent
++ *
++ * @param {Function} callback
++ */
++RoomRepository.prototype.removeBot = function(callback)
++{
++    this.client.addEvent('room:bot:remove', {}, callback);
++};
++
 +/**
 + * Set team
 + *
@@ -779,7 +862,7 @@ index f7cae8c..d12e5d1 100644
  /**
   * Set name
   *
-@@ -360,6 +386,17 @@ RoomRepository.prototype.setConfigOpen = function(open, callback)
+@@ -360,6 +408,17 @@ RoomRepository.prototype.setConfigOpen = function(open, callback)
      this.client.addEvent('room:config:open', {open: open ? true : false}, callback);
  };
  
@@ -797,7 +880,7 @@ index f7cae8c..d12e5d1 100644
  /**
   * Set config max score
   *
-@@ -438,7 +475,8 @@ RoomRepository.prototype.onJoinRoom = function(e)
+@@ -438,9 +497,12 @@ RoomRepository.prototype.onJoinRoom = function(e)
              this.clients.getById(data.player.client),
              data.player.name,
              data.player.color,
@@ -806,8 +889,12 @@ index f7cae8c..d12e5d1 100644
 +            data.player.team
          );
  
++    player.bot = data.player.bot ? true : false;
++
      if (this.room.addPlayer(player)) {
-@@ -496,6 +534,23 @@ RoomRepository.prototype.onPlayerColor = function(e)
+         this.emit('player:join', {player: player});
+     }
+@@ -496,6 +558,23 @@ RoomRepository.prototype.onPlayerColor = function(e)
      }
  };
  
@@ -831,7 +918,7 @@ index f7cae8c..d12e5d1 100644
  /**
   * On player change name
   *
-@@ -557,6 +612,19 @@ RoomRepository.prototype.onConfigOpen = function(e)
+@@ -557,6 +636,19 @@ RoomRepository.prototype.onConfigOpen = function(e)
      this.emit('room:config:open', {open: data.open, password: data.password});
  };
  
@@ -851,7 +938,7 @@ index f7cae8c..d12e5d1 100644
  /**
   * On config max score
   *
-@@ -607,6 +675,18 @@ RoomRepository.prototype.onGameStart = function(e)
+@@ -607,6 +699,18 @@ RoomRepository.prototype.onGameStart = function(e)
      this.emit('room:game:start');
  };
  
@@ -1155,7 +1242,7 @@ index ce69e90..91be08e 100644
      </section>
  </section>
 diff --git a/src/client/views/rooms/detail.html b/src/client/views/rooms/detail.html
-index 488d667..7095f73 100644
+index 488d667..585c095 100644
 --- a/src/client/views/rooms/detail.html
 +++ b/src/client/views/rooms/detail.html
 @@ -4,6 +4,7 @@
@@ -1166,15 +1253,17 @@ index 488d667..7095f73 100644
  
          <div id="room-parameters" ng-controller="RoomConfigController" ng-if="displayParameters">
              <ng-include src="'js/views/rooms/parameters.html'"></ng-include>
-@@ -13,6 +14,7 @@
+@@ -13,6 +14,9 @@
              <span class="label" ng-if="!launching">Start now!</span>
              <span id="starter-count" ng-if="launching">{{ launching }}</span>
          </button>
++        <button type="button" class="btn ai-opponent" ng-click="addBot()" ng-if="master && !launching && !room.config.teams && !hasBot() && room.players.items.length === 1">Play vs AI</button>
++        <button type="button" class="btn ai-opponent" ng-click="removeBot()" ng-if="master && !launching && hasBot()">Remove AI</button>
 +        <p class="team-start-hint" ng-if="room.config.teams && !room.config.hasEnoughTeams()">Pick at least 2 teams</p>
  
          <form ng-submit="submitAddPlayer()" class="top-right-form" name="addPlayer">
              <button type="submit" id="submit"><span><i class="icon-plus"></i></span></button>
-@@ -33,7 +35,7 @@
+@@ -33,7 +37,7 @@
  
          <div class="room-details">
  
@@ -1183,7 +1272,7 @@ index 488d667..7095f73 100644
                  <h5>Are you playing on a smartphone? </h5>
                  <button ng-click="setTouch()" class="btn btn-default">
                      Activate the touch controls!
-@@ -69,7 +71,10 @@
+@@ -69,7 +73,10 @@
                              <input type="text" ng-model="player.name" ng-blur="setName(player)" class="form-control player-name" name="name" maxlength="{{ ::nameMaxLength }}" />
                          </td>
                          <td class="col-color">
@@ -1604,7 +1693,7 @@ index 367ba37..14578b0 100644
              display: block;
              width: auto;
 diff --git a/src/server/controller/GameController.js b/src/server/controller/GameController.js
-index 8bcf0ab..0959729 100644
+index 8bcf0ab..e6b549d 100644
 --- a/src/server/controller/GameController.js
 +++ b/src/server/controller/GameController.js
 @@ -207,6 +207,7 @@ GameController.prototype.attachSpectator = function(client)
@@ -1615,6 +1704,15 @@ index 8bcf0ab..0959729 100644
              rendered: this.game.rendered ? true : false,
              maxScore: this.game.maxScore
          }]],
+@@ -315,7 +316,7 @@ GameController.prototype.onMove = function(client, data)
+ {
+     var player = client.players.getById(data.avatar);
+ 
+-    if (player && player.avatar) {
++    if (player && player.avatar && !player.isBot) {
+         player.avatar.updateAngularVelocity(data.move);
+     }
+ };
 @@ -517,6 +518,10 @@ GameController.prototype.onBorderless = function(data)
   */
  GameController.prototype.onEnd = function(data)
@@ -1628,14 +1726,16 @@ index 8bcf0ab..0959729 100644
      this.unloadGame();
  };
 diff --git a/src/server/controller/RoomController.js b/src/server/controller/RoomController.js
-index ee8dd6a..b318231 100644
+index ee8dd6a..0767e95 100644
 --- a/src/server/controller/RoomController.js
 +++ b/src/server/controller/RoomController.js
-@@ -38,10 +38,12 @@ function RoomController(room)
+@@ -38,10 +38,14 @@ function RoomController(room)
          onKickVote: function (data) { controller.onKickVote(this, data[0], data[1]); },
          onName: function (data) { controller.onName(this, data[0], data[1]); },
          onColor: function (data) { controller.onColor(this, data[0], data[1]); },
 +        onTeam: function (data) { controller.onTeam(this, data[0], data[1]); },
++        onAddBot: function (data) { controller.onAddBot(this, data[0], data[1]); },
++        onRemoveBot: function (data) { controller.onRemoveBot(this, data[0], data[1]); },
          onLeave: function () { controller.onLeave(this); },
          onActivity: function () { controller.onActivity(this); },
  
@@ -1644,23 +1744,27 @@ index ee8dd6a..b318231 100644
          onConfigMaxScore: function (data) { controller.onConfigMaxScore(this, data[0], data[1]); },
          onConfigVariable: function (data) { controller.onConfigVariable(this, data[0], data[1]); },
          onConfigBonus: function (data) { controller.onConfigBonus(this, data[0], data[1]); },
-@@ -155,6 +157,7 @@ RoomController.prototype.attachEvents = function(client)
+@@ -155,6 +159,9 @@ RoomController.prototype.attachEvents = function(client)
      client.on('player:kick', this.callbacks.onKickVote);
      client.on('room:ready', this.callbacks.onReady);
      client.on('room:color', this.callbacks.onColor);
 +    client.on('room:team', this.callbacks.onTeam);
++    client.on('room:bot:add', this.callbacks.onAddBot);
++    client.on('room:bot:remove', this.callbacks.onRemoveBot);
      client.on('room:name', this.callbacks.onName);
      client.on('players:clear', this.onPlayersClear);
  };
-@@ -175,6 +178,7 @@ RoomController.prototype.detachEvents = function(client)
+@@ -175,6 +182,9 @@ RoomController.prototype.detachEvents = function(client)
      client.removeListener('player:kick', this.callbacks.onKickVote);
      client.removeListener('room:ready', this.callbacks.onReady);
      client.removeListener('room:color', this.callbacks.onColor);
 +    client.removeListener('room:team', this.callbacks.onTeam);
++    client.removeListener('room:bot:add', this.callbacks.onAddBot);
++    client.removeListener('room:bot:remove', this.callbacks.onRemoveBot);
      client.removeListener('room:name', this.callbacks.onName);
      client.removeListener('players:clear', this.onPlayersClear);
  };
-@@ -225,6 +229,7 @@ RoomController.prototype.setRoomMaster = function(client)
+@@ -225,6 +235,7 @@ RoomController.prototype.setRoomMaster = function(client)
          this.roomMaster.on('close', this.removeRoomMaster);
          this.roomMaster.on('room:leave', this.removeRoomMaster);
          this.roomMaster.on('room:config:open', this.callbacks.onConfigOpen);
@@ -1668,7 +1772,7 @@ index ee8dd6a..b318231 100644
          this.roomMaster.on('room:config:max-score', this.callbacks.onConfigMaxScore);
          this.roomMaster.on('room:config:variable', this.callbacks.onConfigVariable);
          this.roomMaster.on('room:config:bonus', this.callbacks.onConfigBonus);
-@@ -242,6 +247,7 @@ RoomController.prototype.removeRoomMaster = function()
+@@ -242,6 +253,7 @@ RoomController.prototype.removeRoomMaster = function()
          this.roomMaster.removeListener('close', this.removeRoomMaster);
          this.roomMaster.removeListener('room:leave', this.removeRoomMaster);
          this.roomMaster.removeListener('room:config:open', this.callbacks.onConfigOpen);
@@ -1676,7 +1780,7 @@ index ee8dd6a..b318231 100644
          this.roomMaster.removeListener('room:config:max-score', this.callbacks.onConfigMaxScore);
          this.roomMaster.removeListener('room:config:variable', this.callbacks.onConfigVariable);
          this.roomMaster.removeListener('room:config:bonus', this.callbacks.onConfigBonus);
-@@ -319,6 +325,11 @@ RoomController.prototype.checkIntegrity = function()
+@@ -319,6 +331,11 @@ RoomController.prototype.checkIntegrity = function()
   */
  RoomController.prototype.startLaunch = function()
  {
@@ -1688,7 +1792,7 @@ index ee8dd6a..b318231 100644
      if (!this.launching) {
          this.launching = setTimeout(this.launch, this.room.launchTime);
          this.socketGroup.addEvent('room:launch:start');
-@@ -341,6 +352,11 @@ RoomController.prototype.cancelLaunch = function()
+@@ -341,6 +358,11 @@ RoomController.prototype.cancelLaunch = function()
   */
  RoomController.prototype.launch = function()
  {
@@ -1700,7 +1804,7 @@ index ee8dd6a..b318231 100644
      if (this.launching) {
          this.launching = clearTimeout(this.launching);
      }
-@@ -416,6 +432,10 @@ RoomController.prototype.onPlayerAdd = function(client, data, callback)
+@@ -416,6 +438,10 @@ RoomController.prototype.onPlayerAdd = function(client, data, callback)
  
      var player = new Player(client, name, color);
  
@@ -1711,7 +1815,86 @@ index ee8dd6a..b318231 100644
      if (this.room.addPlayer(player)) {
          client.players.add(player);
          this.emit('player:add', { room: this.room, player: player});
-@@ -480,6 +500,10 @@ RoomController.prototype.onColor = function(client, data, callback)
+@@ -426,6 +452,78 @@ RoomController.prototype.onPlayerAdd = function(client, data, callback)
+     }
+ };
+ 
++/**
++ * Add the AI opponent (room master only, 1v1 without teams). The bot is owned by the requesting client,
++ * so it leaves with them, and it is ready immediately.
++ *
++ * @param {SocketClient} client
++ * @param {Object} data
++ * @param {Function} callback
++ */
++RoomController.prototype.onAddBot = function(client, data, callback)
++{
++    var controller = this,
++        check = function () {
++            if (!controller.roomMaster || controller.roomMaster.id !== client.id) { return 'Only the room master can add the AI.'; }
++            if (controller.room.game || controller.launching) { return 'Game already started.'; }
++            if (controller.room.config.teams) { return 'The AI does not play team games.'; }
++            if (controller.room.players.count() !== 1) { return 'The AI plays 1v1: it needs exactly one other player.'; }
++            if (!controller.clients.exists(client)) { return 'Unknown client'; }
++            return null;
++        },
++        error = check();
++
++    if (error) { return callback({success: false, error: error}); }
++
++    CurvyrlBots.load().then(function (model) {
++        var error = model ? check() : 'AI opponent unavailable.';
++
++        if (error) { return callback({success: false, error: error}); }
++
++        var name = 'AI';
++
++        while (!controller.room.isNameAvailable(name)) { name += '+'; }
++
++        var player = new Player(client, name, '#7fdbff');
++
++        player.isBot = true;
++
++        if (!controller.room.addPlayer(player)) {
++            return callback({success: false, error: 'Could not add player.'});
++        }
++
++        client.players.add(player);
++        controller.emit('player:add', { room: controller.room, player: player});
++        player.toggleReady(true);
++        controller.socketGroup.addEvent('player:ready', { player: player.id, ready: true });
++        callback({success: true});
++
++        if (controller.room.isReady()) {
++            controller.launch();
++        }
++    });
++};
++
++/**
++ * Remove the AI opponent(s) added by this client
++ *
++ * @param {SocketClient} client
++ * @param {Object} data
++ * @param {Function} callback
++ */
++RoomController.prototype.onRemoveBot = function(client, data, callback)
++{
++    if (this.room.game) { return callback({success: false, error: 'Game already started.'}); }
++
++    for (var i = client.players.items.length - 1; i >= 0; i--) {
++        if (client.players.items[i].isBot) {
++            this.removePlayer(client.players.items[i]);
++        }
++    }
++
++    callback({success: true});
++};
++
+ /**
+  * On remove player from room
+  *
+@@ -480,6 +578,10 @@ RoomController.prototype.onColor = function(client, data, callback)
          return callback({success: false});
      }
  
@@ -1722,7 +1905,7 @@ index ee8dd6a..b318231 100644
      if (player.setColor(color)) {
          callback({success: true, color: player.color});
          this.socketGroup.addEvent('player:color', { player: player.id, color: player.color });
-@@ -488,6 +512,66 @@ RoomController.prototype.onColor = function(client, data, callback)
+@@ -488,6 +590,66 @@ RoomController.prototype.onColor = function(client, data, callback)
      }
  };
  
@@ -1789,7 +1972,7 @@ index ee8dd6a..b318231 100644
  /**
   * On player change name
   *
-@@ -595,6 +679,47 @@ RoomController.prototype.onConfigOpen = function(client, data, callback)
+@@ -595,6 +757,47 @@ RoomController.prototype.onConfigOpen = function(client, data, callback)
      }
  };
  
@@ -1850,6 +2033,82 @@ index a2f9417..3eab49c 100644
  
      if (!room) {
          return callback({success: false, error: 'Unknown room "' + data.name + '".'});
+diff --git a/src/server/core/CurvyrlBots.js b/src/server/core/CurvyrlBots.js
+new file mode 100644
+index 0000000..c9efa8f
+--- /dev/null
++++ b/src/server/core/CurvyrlBots.js
+@@ -0,0 +1,70 @@
++/**
++ * AI opponents from curvyrl: an ONNX policy trained with PPO self-play.
++ * The bot code and model live in CURVYRL_BOT_DIR (default: <repo>/bot), see bot/bot.cjs.
++ */
++var CurvyrlBots = {
++    lib: null,
++    model: null,
++    loading: null
++};
++
++CurvyrlBots.dir = function()
++{
++    return process.env.CURVYRL_BOT_DIR || require('path').join(__dirname, '..', 'bot');
++};
++
++/**
++ * Load the bot library and model once; resolves to the loaded model, or null if unavailable.
++ *
++ * @return {Promise}
++ */
++CurvyrlBots.load = function()
++{
++    if (!this.loading) {
++        var path = require('path');
++
++        try {
++            this.lib = require(path.join(this.dir(), 'bot.cjs'));
++            this.lib.CurvyBot.installHooks({ Bonus: Bonus });
++            this.loading = this.lib.CurvyBot.load(path.join(this.dir(), 'model')).then(function (model) {
++                CurvyrlBots.model = model;
++                console.info('AI opponent loaded (update %s, %s).', model.meta.update, model.meta.model);
++                return model;
++            }, function (error) {
++                console.error('AI opponent unavailable:', error);
++                return null;
++            });
++        } catch (error) {
++            console.error('AI opponent unavailable:', error);
++            this.loading = Promise.resolve(null);
++        }
++    }
++
++    return this.loading;
++};
++
++/**
++ * Create bots for a game's bot players (the model must already be loaded).
++ *
++ * @param {Game} game
++ *
++ * @return {Array}
++ */
++CurvyrlBots.forGame = function(game)
++{
++    var bots = [];
++
++    if (!this.model) { return bots; }
++
++    for (var i = 0; i < game.avatars.items.length; i++) {
++        var avatar = game.avatars.items[i];
++
++        if (avatar.player.isBot) {
++            var bot = new this.lib.CurvyBot(this.model.meta, this.model.session, this.model.ort);
++            bot.attach(game, avatar);
++            bots.push(bot);
++        }
++    }
++
++    return bots;
++};
 diff --git a/src/server/core/Server.js b/src/server/core/Server.js
 index 1b7ff44..f0260d0 100644
 --- a/src/server/core/Server.js
@@ -1983,10 +2242,30 @@ index 71fe288..e56e692 100644
      }
  };
 diff --git a/src/server/model/Game.js b/src/server/model/Game.js
-index d963cd2..720e8a8 100644
+index d963cd2..1993263 100644
 --- a/src/server/model/Game.js
 +++ b/src/server/model/Game.js
-@@ -124,6 +124,41 @@ Game.prototype.onPoint = function(data)
+@@ -24,6 +24,8 @@ function Game(room)
+         avatar.clear();
+         avatar.on('point', this.onPoint);
+     }
++
++    this.bots = CurvyrlBots.forGame(this);
+ }
+ 
+ Game.prototype = Object.create(BaseGame.prototype);
+@@ -77,6 +79,10 @@ Game.prototype.update = function(step)
+     if (this.deathInFrame) {
+         this.checkRoundEnd();
+     }
++
++    for (i = this.bots.length - 1; i >= 0; i--) {
++        this.bots[i].onFrame();
++    }
+ };
+ 
+ /**
+@@ -124,6 +130,41 @@ Game.prototype.onPoint = function(data)
   */
  Game.prototype.isWon = function()
  {
@@ -2028,7 +2307,7 @@ index d963cd2..720e8a8 100644
      var present = this.getPresentAvatars().count();
  
      if (present <= 0) { return true; }
-@@ -154,6 +189,23 @@ Game.prototype.checkRoundEnd = function()
+@@ -154,6 +195,23 @@ Game.prototype.checkRoundEnd = function()
          return;
      }
  
@@ -2052,7 +2331,7 @@ index d963cd2..720e8a8 100644
      var alive = false;
  
      for (var i = this.avatars.items.length - 1; i >= 0; i--) {
-@@ -174,6 +226,24 @@ Game.prototype.checkRoundEnd = function()
+@@ -174,6 +232,24 @@ Game.prototype.checkRoundEnd = function()
   */
  Game.prototype.resolveScores = function()
  {
@@ -2077,6 +2356,29 @@ index d963cd2..720e8a8 100644
      var winner;
  
      if (this.avatars.count() === 1) {
+@@ -230,6 +306,10 @@ Game.prototype.onRoundEnd = function()
+ Game.prototype.onRoundNew = function()
+ {
+     this.emit('round:new', {game: this});
++
++    for (var b = this.bots.length - 1; b >= 0; b--) {
++        this.bots[b].newRound();
++    }
+     BaseGame.prototype.onRoundNew.call(this);
+ 
+     var avatar, position, i;
+diff --git a/src/server/model/Player.js b/src/server/model/Player.js
+index 29c8ed6..3292202 100644
+--- a/src/server/model/Player.js
++++ b/src/server/model/Player.js
+@@ -23,6 +23,7 @@ Player.prototype.serialize = function()
+     var data = BasePlayer.prototype.serialize.call(this);
+ 
+     data.active = this.client.active;
++    data.bot    = this.isBot ? true : false;
+ 
+     return data;
+ };
 diff --git a/src/shared/model/BaseGame.js b/src/shared/model/BaseGame.js
 index f578eda..e730d1d 100644
 --- a/src/shared/model/BaseGame.js

@@ -55,15 +55,11 @@ class CurvyBot {
         this.decisions = 0;
         this.lastMove = 0;
         this.busy = false;
-    }
-
-    /** Avatars in player order with the opponent(s) after the bot, as the env sees them. */
-    avatarsInOrder() {
-        return this.game.avatars.items;
+        this.failed = false;
     }
 
     observation() {
-        const avatars = this.avatarsInOrder();
+        const avatars = this.game.avatars.items;
         return observe(this.meta, this.game, avatars, avatars.indexOf(this.avatar), this.decisions, CurvyBot.timeLeft);
     }
 
@@ -81,7 +77,15 @@ class CurvyBot {
     onFrame() {
         if (!this.game || !this.game.inRound || !this.avatar.alive) { return; }
         if (this.frames++ % this.meta.frames_per_step !== 0 || this.busy) { return; }
-        const obs = this.observation();
+        let obs;
+        try {
+            obs = this.observation();
+        } catch (error) {
+            // Never let a bot problem break the game loop; the avatar just keeps its current move.
+            if (!this.failed) { console.error('curvyrl bot observation failed:', error); }
+            this.failed = true;
+            return;
+        }
         this.decisions++;
         this.busy = true;
         this.act(obs).then((action) => {
