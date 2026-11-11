@@ -27,4 +27,4 @@ jobs:
         run: uv sync
 
       - name: Deploy curvytron to Modal
-        run: uv run modal deploy -m src.app
+        run: uv run modal deploy -m src.app > deploy.log 2>&1 || { tail -20 deploy.log; exit 1; }
