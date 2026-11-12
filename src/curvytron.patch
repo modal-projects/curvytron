@@ -1,17 +1,27 @@
 diff --git a/src/client/controller/CurvytronController.js b/src/client/controller/CurvytronController.js
-index 3d661d9..6c89e13 100644
+index 3d661d9..3107097 100644
 --- a/src/client/controller/CurvytronController.js
 +++ b/src/client/controller/CurvytronController.js
-@@ -24,7 +24,7 @@ function CurvytronController($scope, $window, $location, profile, analyser, watc
+@@ -10,6 +10,8 @@
+  */
+ function CurvytronController($scope, $window, $location, profile, analyser, watcher, client)
+ {
++    var lobby = window.CURVYTRON_LOBBY;
++
+     AbstractController.call(this, $scope);
+ 
+     this.$window       = $window;
+@@ -24,7 +26,8 @@ function CurvytronController($scope, $window, $location, profile, analyser, watc
      this.reload        = this.reload.bind(this);
  
      // Hydrate scope
 -    this.$scope.status  = 'connecting';
 +    this.$scope.status  = window.CURVYTRON_LOBBY && window.CURVYTRON_LOBBY.isLobby ? 'online' : 'connecting';
++    this.$scope.homeUrl = lobby && !lobby.isLobby && lobby.url ? lobby.url : '/#/';
      this.$scope.reload  = this.reload;
      this.$scope.profile = false;
  
-@@ -43,7 +43,7 @@ CurvytronController.prototype.constructor = CurvytronController;
+@@ -43,7 +46,7 @@ CurvytronController.prototype.constructor = CurvytronController;
  CurvytronController.prototype.onConnect = function(e)
  {
      this.$scope.status  = 'online';
@@ -1097,7 +1107,7 @@ index 77e7122..d8044b0 100644
      this.rooms.clear();
  };
 diff --git a/src/client/views/game/play.html b/src/client/views/game/play.html
-index 67f533f..eb5da41 100644
+index 67f533f..a0e4ff0 100644
 --- a/src/client/views/game/play.html
 +++ b/src/client/views/game/play.html
 @@ -1,8 +1,8 @@
@@ -1106,7 +1116,7 @@ index 67f533f..eb5da41 100644
          <aside id="game-infos">
 -            <header><a href="/#/" class="logo"><img src="images/logo.svg" alt="Curvytron" id="logo" /> Curvytron</a></header>
 -            <div class="maxScore"><i class="icon-trophy"></i><span>{{ game.maxScore }}</span></div>
-+            <header><a href="/#/" class="logo"><img src="images/modal-logo.png" alt="Modal" id="logo" /> <span class="brand-name">Curvytron</span> <small class="brand-sub">(on Modal!)</small></a></header>
++            <header><a ng-href="{{ homeUrl }}" class="logo"><img src="images/modal-logo.png" alt="Modal" id="logo" /> <span class="brand-name">Curvytron</span> <small class="brand-sub">(on Modal!)</small></a></header>
 +            <div class="maxScore" ng-class="{ 'teams': game.teams }"><i class="icon-trophy"></i><span>{{ game.maxScore }}</span></div>
              <h3 title="{{ ::game.name }}">{{ ::game.name }}</h3>
  
@@ -1171,15 +1181,17 @@ index 67f533f..eb5da41 100644
      </section>
  </section>
 diff --git a/src/client/views/index.html b/src/client/views/index.html
-index d4c645b..e8f2a1d 100644
+index d4c645b..9fb44e3 100644
 --- a/src/client/views/index.html
 +++ b/src/client/views/index.html
-@@ -29,8 +29,8 @@
+@@ -28,9 +28,9 @@
+     </head>
      <body ng-app="curvytronApp" ng-controller="CurvytronController">
          <header>
-             <a href="/#/" class="logo animated" alt="Curvytron">
+-            <a href="/#/" class="logo animated" alt="Curvytron">
 -                <img src="images/logo.svg" alt="Curvytron" id="logo" />
 -                <h1 class="brand">Curvytron</h1>
++            <a ng-href="{{ homeUrl }}" class="logo animated" alt="Curvytron">
 +                <img src="images/modal-logo.png" alt="Modal" id="logo" />
 +                <h1 class="brand">Curvytron <small class="brand-sub">(on Modal!)</small></h1>
              </a>
